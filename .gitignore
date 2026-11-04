@@ -1,15 +1,58 @@
+# ============================================================
+#  GuardWire VPN — .gitignore
+#  Игнорируем всё, что генерируется инструментами и не является
+#  исходным кодом. В репозитории должны оставаться только:
+#  исходники, ресурсы, gradle-скрипты и gradle wrapper.
+# ============================================================
+
+# ---------- IDE / редакторы ----------
+.idea/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+*.ipr
+*.iws
+out/
+.vscode/
+.fleet/
+*.hprof
+
+# ---------- Gradle / Android build ----------
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+.navigation/
 local.properties
+
+# артефакты сборки
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.log
+
+# ---------- Kotlin ----------
+.kotlin/
+
+# ---------- Python (demo-сервер) ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---------- ОС ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ---------- Секреты и подписи ----------
+# ключи и пароли не должны попадать в git
+*.jks
+*.keystore
+keystore.properties
+signing.properties

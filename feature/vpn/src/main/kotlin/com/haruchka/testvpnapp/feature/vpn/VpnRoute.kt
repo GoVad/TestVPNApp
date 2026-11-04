@@ -1,0 +1,80 @@
+package com.haruchka.testvpnapp.feature.vpn
+
+import android.Manifest
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.haruchka.testvpnapp.core.vpn.VpnController
+import com.haruchka.testvpnapp.core.vpn.VpnSettingsRepository
+import org.orbitmvi.orbit.compose.collectAsState
+import org.orbitmvi.orbit.compose.collectSideEffect
+
+/**
+ * Точка входа фичи: связывает Orbit-ViewModel, системные permission-диалоги
+ * и stateless-экран.
+ */
+@Composable
+fun VpnRoute(
+    controller: VpnController,
+    settingsRepository: VpnSettingsRepository,
+    modifier: Modifier = Modifier,
+) {
+    val appContext = LocalContext.current.applicationContext
+    val factory = remember(controller, settingsRepository, appContext) {
+        VpnViewModel.factory(controller, settingsRepository, appContext)
+    }
+    val viewModel: VpnViewModel = viewModel(factory = factory)
+    val state by viewModel.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val consentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onVpnConsentResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onNotificationPermissionResult(granted)
+    }
+
+    viewModel.collectSideEffect { effect ->
+        when (effect) {
+            is VpnSideEffect.LaunchVpnConsent -> consentLauncher.launch(effect.intent)
+            VpnSideEffect.RequestNotificationPermission ->
+                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            is VpnSideEffect.ShowMessage ->
+                snackbarHostState.showSnackbar(effect.message)
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
+        VpnScreen(
+            state = state,
+            onConnect = { viewModel.onConnectClicked() },
+            onDisconnect = { viewModel.onDisconnectClicked() },
+            onHostChange = { viewModel.onHostChanged(it) },
+            onPortChange = { viewModel.onPortChanged(it) },
+            onTokenChange = { viewModel.onTokenChanged(it) },
+            modifier = Modifier.padding(innerPadding),
+        )
+    }
+}

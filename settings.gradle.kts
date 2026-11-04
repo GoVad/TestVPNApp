@@ -24,3 +24,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "TestVPNApp"
 include(":app")
+include(":core:model")
+include(":core:protocol")
+include(":core:vpn")
+include(":feature:vpn")
