@@ -26,12 +26,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -61,9 +63,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
+import com.haruchka.testvpnapp.core.model.VpnLogEntry
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import com.haruchka.testvpnapp.core.model.VpnTrafficStats
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /** Stateless-экран. Всё состояние приходит из Orbit-ViewModel. */
@@ -72,39 +78,69 @@ fun VpnScreen(
     state: VpnUiState,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onModeChange: (VpnMode) -> Unit,
+    onShowLogs: () -> Unit,
+    onLogout: () -> Unit,
+    username: String,
+    onWireGuardConfigSaved: (String) -> Unit,
+    onWireGuardConfigCleared: () -> Unit,
     onHostChange: (String) -> Unit,
     onPortChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showWireGuardDialog by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Header() }
+        item { Header(onShowLogs = onShowLogs, onLogout = onLogout, username = username) }
+        if (state.isLoading) {
+            item {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+        item {
+            ModeSelector(
+                mode = state.mode,
+                enabled = !state.isActive && !state.isLoading,
+                onModeChange = onModeChange,
+            )
+        }
         item {
             StatusHero(
                 state = state,
                 onAction = { if (state.isActive) onDisconnect() else onConnect() },
             )
         }
-        item {
-            EndpointCard(
-                state = state,
-                onHostChange = onHostChange,
-                onPortChange = onPortChange,
-                onTokenChange = onTokenChange,
-            )
+        when (state.mode) {
+            VpnMode.SIMPLIFIED -> item {
+                EndpointCard(
+                    state = state,
+                    onHostChange = onHostChange,
+                    onPortChange = onPortChange,
+                    onTokenChange = onTokenChange,
+                )
+            }
+
+            VpnMode.REAL -> item {
+                WireGuardCard(
+                    state = state,
+                    onPasteConfig = { showWireGuardDialog = true },
+                    onClearConfig = onWireGuardConfigCleared,
+                )
+            }
         }
         if (state.runtime.isConnected) {
             item { TrafficCard(state) }
         }
         item { LogCard(state.logs) }
-        item { AboutCard() }
+        item { AboutCard(mode = state.mode) }
         item {
             Text(
-                text = "Учебный проект · GuardWire/2",
+                text = "GuardWire/2 · WireGuard · учебный проект",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -112,10 +148,24 @@ fun VpnScreen(
             )
         }
     }
+
+    if (showWireGuardDialog) {
+        WireGuardConfigDialog(
+            onDismiss = { showWireGuardDialog = false },
+            onSave = {
+                showWireGuardDialog = false
+                onWireGuardConfigSaved(it)
+            },
+        )
+    }
 }
 
 @Composable
-private fun Header() {
+private fun Header(
+    onShowLogs: () -> Unit,
+    onLogout: () -> Unit,
+    username: String,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -128,23 +178,80 @@ private fun Header() {
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
-                text = "Демонстрационный VPN на VpnService",
+                text = "VPN на VpnService и WireGuard · $username",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        TextButton(onClick = onShowLogs) {
+            Text("Логи")
+        }
+        TextButton(onClick = onLogout) {
+            Text("Выйти")
+        }
+    }
+}
+
+@Composable
+private fun ModeSelector(
+    mode: VpnMode,
+    enabled: Boolean,
+    onModeChange: (VpnMode) -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "DEMO",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            ModeButton(
+                text = "Упрощённая",
+                selected = mode == VpnMode.SIMPLIFIED,
+                enabled = enabled,
+                onClick = { onModeChange(VpnMode.SIMPLIFIED) },
+                modifier = Modifier.weight(1f),
+            )
+            ModeButton(
+                text = "Реальная",
+                selected = mode == VpnMode.REAL,
+                enabled = enabled,
+                onClick = { onModeChange(VpnMode.REAL) },
+                modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+@Composable
+private fun ModeButton(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(44.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = if (selected) {
+            ButtonDefaults.buttonColors()
+        } else {
+            ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        contentPadding = PaddingValues(horizontal = 8.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -199,7 +306,7 @@ private fun StatusHero(
                         ),
                     )
                     .border(2.dp, accent.copy(alpha = 0.65f), CircleShape)
-                    .clickable(enabled = !isBusy, onClick = onAction),
+                    .clickable(enabled = !isBusy && !state.isLoading, onClick = onAction),
                 contentAlignment = Alignment.Center,
             ) {
                 PowerGlyph(
@@ -227,7 +334,7 @@ private fun StatusHero(
 
         Button(
             onClick = onAction,
-            enabled = !isBusy,
+            enabled = !isBusy && !state.isLoading,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -279,6 +386,141 @@ private fun PowerGlyph(
             cap = StrokeCap.Round,
         )
     }
+}
+
+@Composable
+private fun WireGuardCard(
+    state: VpnUiState,
+    onPasteConfig: () -> Unit,
+    onClearConfig: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "WireGuard-профиль",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            if (state.hasWireGuardConfig) {
+                Text(
+                    text = "Конфиг сохранён в зашифрованном DataStore. Приватный ключ не показывается.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ProfileRow("Адрес", state.wireGuardAddress ?: "—")
+                ProfileRow("Endpoint", state.wireGuardEndpoint ?: "—")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = onPasteConfig,
+                        enabled = state.fieldsEnabled,
+                    ) {
+                        Text("Заменить")
+                    }
+                    TextButton(
+                        onClick = onClearConfig,
+                        enabled = state.fieldsEnabled,
+                    ) {
+                        Text("Удалить")
+                    }
+                }
+            } else {
+                Text(
+                    text = "Вставьте текст .conf из WireGuard. Приватный ключ будет " +
+                        "зашифрован ключом Android Keystore.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onPasteConfig,
+                    enabled = state.fieldsEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Вставить конфиг")
+                }
+            }
+
+            Text(
+                text = "IPv6 отключён: конфиг с IPv6-адресами, DNS или AllowedIPs будет отклонён.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(76.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun WireGuardConfigDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("WireGuard-конфиг") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Вставьте содержимое .conf. После сохранения приватный ключ " +
+                        "не будет отображаться.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    minLines = 8,
+                    maxLines = 14,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(text.trim()) },
+                enabled = text.isNotBlank(),
+            ) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        },
+    )
 }
 
 @Composable
@@ -408,7 +650,11 @@ private fun TrafficCard(state: VpnUiState) {
                 TrafficMetric(
                     title = "Получено",
                     value = formatBytes(stats.bytesIn),
-                    detail = "${stats.packetsIn} пакетов",
+                    detail = if (state.mode == VpnMode.SIMPLIFIED) {
+                        "${stats.packetsIn} пакетов"
+                    } else {
+                        "WireGuard"
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 VerticalDivider(
@@ -418,7 +664,11 @@ private fun TrafficCard(state: VpnUiState) {
                 TrafficMetric(
                     title = "Отправлено",
                     value = formatBytes(stats.bytesOut),
-                    detail = "${stats.packetsOut} пакетов",
+                    detail = if (state.mode == VpnMode.SIMPLIFIED) {
+                        "${stats.packetsOut} пакетов"
+                    } else {
+                        "WireGuard"
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .padding(start = 16.dp),
@@ -431,13 +681,17 @@ private fun TrafficCard(state: VpnUiState) {
             )
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = server?.endpoint ?: "—",
+                    text = state.endpoint ?: "—",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = "MTU ${server?.mtu ?: "—"}",
+                    text = if (state.mode == VpnMode.REAL) {
+                        "WireGuard"
+                    } else {
+                        "MTU ${server?.mtu ?: "—"}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -498,10 +752,11 @@ private fun LogCard(logs: List<VpnLogEntry>) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                logs.asReversed().forEach { entry ->
+                val formatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+                logs.asReversed().take(6).forEach { entry ->
                     Row(verticalAlignment = Alignment.Top) {
                         Text(
-                            text = entry.time,
+                            text = formatter.format(Date(entry.timestampMillis)),
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.primary,
@@ -520,7 +775,7 @@ private fun LogCard(logs: List<VpnLogEntry>) {
 }
 
 @Composable
-private fun AboutCard() {
+private fun AboutCard(mode: VpnMode) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -536,20 +791,37 @@ private fun AboutCard() {
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                text = "GuardWireVpnService наследует VpnService, создаёт TUN через " +
-                    "VpnService.Builder и показывает foreground-уведомление.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = "IP-пакеты из TUN упаковываются в кадры GuardWire и уходят " +
-                    "по TCP. Кадры шифруются AES-256-GCM, а ключ выводится из " +
-                    "эфемерного ECDH P-256. Ответы сервера пишутся обратно в TUN.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            when (mode) {
+                VpnMode.SIMPLIFIED -> {
+                    Text(
+                        text = "GuardWireVpnService наследует VpnService, создаёт TUN через " +
+                            "VpnService.Builder и показывает foreground-уведомление.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = "IP-пакеты из TUN упаковываются в кадры GuardWire и уходят " +
+                            "по TCP. Кадры шифруются AES-256-GCM, ключ выводится из " +
+                            "эфемерного ECDH P-256. Ответы сервера пишутся обратно в TUN.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                VpnMode.REAL -> {
+                    Text(
+                        text = "Реальный режим использует официальную библиотеку WireGuard: " +
+                            "UDP-транспорт, Noise_IK и ChaCha20-Poly1305.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = "Конфиг WireGuard хранится зашифрованным в DataStore. " +
+                            "Приватный ключ не показывается после сохранения.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             Text(
                 text = "Клиент не делает NAT/tun2socks: интернет появится только с сервером, " +
-                    "который маршрутизирует пакеты (например, guardwire-linux-server.py).",
+                    "который маршрутизирует пакеты (guardwire-linux-server.py или WireGuard-сервер).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -572,9 +844,11 @@ private fun statusTitle(connection: VpnConnectionState): String = when (connecti
 }
 
 private fun statusSubtitle(state: VpnUiState): String {
-    val endpoint = state.runtime.server?.endpoint ?: "сервер"
+    val endpoint = state.endpoint ?: "сервер"
     return when (val connection = state.connection) {
-        VpnConnectionState.Disconnected -> "Трафик идёт напрямую"
+        VpnConnectionState.Disconnected ->
+            if (state.mode == VpnMode.REAL) "WireGuard не подключён" else "Трафик идёт напрямую"
+
         VpnConnectionState.Connecting -> "Рукопожатие с $endpoint"
         is VpnConnectionState.Connected ->
             "$endpoint · ${formatDuration(state.connectedDurationSeconds)}"
@@ -616,6 +890,10 @@ private fun VpnScreenConnectedPreview() {
     MaterialTheme {
         VpnScreen(
             state = VpnUiState(
+                isLoading = false,
+                isLoggedIn = true,
+                username = "demo",
+                mode = VpnMode.SIMPLIFIED,
                 host = "10.0.2.2",
                 port = "8443",
                 token = "demo",
@@ -631,13 +909,19 @@ private fun VpnScreenConnectedPreview() {
                 ),
                 nowMillis = now,
                 logs = listOf(
-                    VpnLogEntry("12:00:00", "Готов к подключению"),
-                    VpnLogEntry("12:00:02", "Подключение к 10.0.2.2:8443…"),
-                    VpnLogEntry("12:00:03", "Туннель установлен: 10.0.2.2:8443"),
+                    VpnLogEntry(now - 5_000, "Готов к подключению"),
+                    VpnLogEntry(now - 3_000, "Подключение к 10.0.2.2:8443…"),
+                    VpnLogEntry(now - 1_000, "Туннель установлен: 10.0.2.2:8443"),
                 ),
             ),
             onConnect = {},
             onDisconnect = {},
+            onModeChange = {},
+            onShowLogs = {},
+            onLogout = {},
+            username = "demo",
+            onWireGuardConfigSaved = {},
+            onWireGuardConfigCleared = {},
             onHostChange = {},
             onPortChange = {},
             onTokenChange = {},

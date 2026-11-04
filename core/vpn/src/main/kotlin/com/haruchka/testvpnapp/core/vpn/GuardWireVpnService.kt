@@ -13,6 +13,7 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import com.haruchka.testvpnapp.core.protocol.GuardWireClient
 import com.haruchka.testvpnapp.core.protocol.GuardWireConnection
@@ -40,6 +41,7 @@ class GuardWireVpnService : VpnService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lifecycleLock = Any()
     private val stateStore = VpnStateStore.shared
+    private val logStore = VpnLogStore.shared
 
     @Volatile
     private var stopping = false
@@ -92,7 +94,8 @@ class GuardWireVpnService : VpnService() {
             return
         }
 
-        stateStore.markConnecting(server)
+        logStore.append("GuardWire: подключение к ${server.endpoint}…")
+        stateStore.markConnecting(VpnMode.SIMPLIFIED, server)
         updateNotification(
             getString(R.string.guardwire_notification_connecting, server.endpoint),
         )
@@ -129,7 +132,8 @@ class GuardWireVpnService : VpnService() {
                     return
                 }
                 tunnel = newTunnel
-                stateStore.markConnected(server, System.currentTimeMillis())
+                stateStore.markConnected(VpnMode.SIMPLIFIED, System.currentTimeMillis(), server)
+                logStore.append("GuardWire: туннель установлен")
                 updateNotification(
                     getString(R.string.guardwire_notification_connected, server.endpoint),
                 )
@@ -182,8 +186,10 @@ class GuardWireVpnService : VpnService() {
 
         if (reason == null) {
             stateStore.markDisconnected()
+            logStore.append("GuardWire: туннель отключён")
         } else {
             stateStore.markFailed(reason)
+            logStore.append("GuardWire: $reason")
         }
 
         stopForegroundCompat()

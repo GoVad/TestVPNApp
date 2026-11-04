@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import androidx.core.content.ContextCompat
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ class VpnController(
 ) {
 
     private val appContext = context.applicationContext
+    private val wireGuard = WireGuardController(appContext, stateStore)
 
     val state: StateFlow<VpnRuntimeState> = stateStore.state
 
@@ -31,7 +33,7 @@ class VpnController(
 
     /** Запускает подключение. Вызывать только после успешного [VpnService.prepare]. */
     fun connect(config: VpnServerConfig) {
-        stateStore.markConnecting(config)
+        stateStore.markConnecting(VpnMode.SIMPLIFIED, config)
         runCatching {
             ContextCompat.startForegroundService(
                 appContext,
@@ -44,8 +46,18 @@ class VpnController(
         }
     }
 
-    /** Останавливает туннель и убирает foreground-уведомление. */
+    /** Запускает подключение в реальном режиме WireGuard. */
+    fun connectWireGuard(configText: String) {
+        wireGuard.connect(configText)
+    }
+
+    /** Останавливает активный туннель и убирает foreground-уведомление. */
     fun disconnect() {
+        if (stateStore.state.value.mode == VpnMode.REAL) {
+            wireGuard.disconnect()
+            return
+        }
+
         stateStore.markDisconnecting()
         runCatching {
             appContext.startService(GuardWireVpnService.disconnectIntent(appContext))

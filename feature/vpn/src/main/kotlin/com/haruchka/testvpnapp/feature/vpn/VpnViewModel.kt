@@ -10,18 +10,20 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
-import com.haruchka.testvpnapp.core.model.VpnRuntimeState
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
+import com.haruchka.testvpnapp.core.vpn.AuthRepository
 import com.haruchka.testvpnapp.core.vpn.VpnController
+import com.haruchka.testvpnapp.core.vpn.VpnLogStore
 import com.haruchka.testvpnapp.core.vpn.VpnSettingsRepository
+import com.haruchka.testvpnapp.core.vpn.WireGuardConfigParser
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.syntax.Syntax
 import org.orbitmvi.orbit.viewmodel.orbitContainer
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * MVVM + Orbit: UI отправляет интенты, ViewModel меняет состояние через
@@ -33,60 +35,105 @@ class VpnViewModel(
     private val appContext: Context,
 ) : ViewModel(), OrbitContainerHost<VpnUiState, VpnUiState, VpnSideEffect> {
 
-    private val savedConfig = settingsRepository.load()
-    private var pendingConfig: VpnServerConfig? = null
-    private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    private val logStore = VpnLogStore.shared
+    private val authRepository = AuthRepository()
+    private var wireGuardConfig: String? = null
+    private var pending: PendingConnection? = null
 
     override val container: OrbitContainer<VpnUiState, VpnUiState, VpnSideEffect> =
-        orbitContainer(
-            initialState = VpnUiState(
-                host = savedConfig.host,
-                port = savedConfig.port.toString(),
-                token = savedConfig.token,
-                logs = listOf(log("Готов к подключению")),
-            ),
-        ) {
-            var previousState: VpnConnectionState = VpnConnectionState.Disconnected
+        orbitContainer(initialState = VpnUiState()) {
+            val stored = runCatching { settingsRepository.load() }
+                .onFailure { logStore.append("Не удалось загрузить настройки: ${it.message}") }
+                .getOrNull()
 
-            controller.state.collect { runtime ->
-                val previous = previousState
-                previousState = runtime.connection
-                val newLog = if (previous != runtime.connection) {
-                    log(describe(runtime))
-                } else {
-                    null
+            if (stored != null) {
+                wireGuardConfig = stored.wireGuardConfig
+                val profile = stored.wireGuardConfig?.let {
+                    runCatching { WireGuardConfigParser.profile(it) }.getOrNull()
                 }
-
+                val nowSeconds = System.currentTimeMillis() / 1_000L
+                val authValid = stored.authToken != null && stored.authExpiresAt > nowSeconds
+                if (!authValid && stored.authToken != null) {
+                    logStore.append("Сессия истекла, войдите заново")
+                }
                 reduce {
                     state.copy(
-                        runtime = runtime,
-                        nowMillis = System.currentTimeMillis(),
-                        inputError = if (runtime.connection is VpnConnectionState.Failed) {
-                            null
-                        } else {
-                            state.inputError
-                        },
-                        logs = newLog?.let { appendLog(state.logs, it) } ?: state.logs,
+                        mode = stored.mode,
+                        host = stored.guardWire.host,
+                        port = stored.guardWire.port.toString(),
+                        token = if (authValid) stored.authToken.orEmpty() else stored.guardWire.token,
+                        isLoggedIn = authValid,
+                        username = stored.authUsername.orEmpty(),
+                        authBaseUrl = stored.authBaseUrl,
+                        hasWireGuardConfig = stored.wireGuardConfig != null,
+                        wireGuardEndpoint = profile?.endpoint,
+                        wireGuardAddress = profile?.addresses,
                     )
+                }
+            }
+
+            logStore.append("Готов к подключению")
+
+            reduce { state.copy(isLoading = false) }
+
+            coroutineScope {
+                launch {
+                    controller.state.collect { runtime ->
+                        reduce {
+                            state.copy(
+                                runtime = runtime,
+                                nowMillis = System.currentTimeMillis(),
+                                inputError = if (runtime.connection is VpnConnectionState.Failed) {
+                                    null
+                                } else {
+                                    state.inputError
+                                },
+                            )
+                        }
+                    }
+                }
+                launch {
+                    logStore.logs.collect { logs ->
+                        reduce { state.copy(logs = logs) }
+                    }
                 }
             }
         }
 
     fun onConnectClicked() = intent {
-        if (state.isActive) return@intent
+        if (state.isActive || state.isLoading) return@intent
+        if (!state.isLoggedIn) {
+            postSideEffect(VpnSideEffect.ShowMessage("Сначала войдите в аккаунт"))
+            return@intent
+        }
 
-        val config = readConfig() ?: return@intent
-        pendingConfig = config
-        settingsRepository.save(config)
+        when (state.mode) {
+            VpnMode.SIMPLIFIED -> {
+                val config = readConfig() ?: return@intent
+                runCatching { settingsRepository.saveGuardWire(config) }
+                    .onFailure { logStore.append("Не удалось сохранить настройки GuardWire") }
+                pending = PendingConnection.GuardWire(config)
+                reduce {
+                    state.copy(
+                        host = config.host,
+                        port = config.port.toString(),
+                        token = config.token,
+                        inputError = null,
+                    )
+                }
+            }
 
-        reduce {
-            state.copy(
-                host = config.host,
-                port = config.port.toString(),
-                token = config.token,
-                inputError = null,
-                logs = appendLog(state.logs, log("Проверяем разрешения…")),
-            )
+            VpnMode.REAL -> {
+                val config = wireGuardConfig
+                if (config == null) {
+                    val message = "Сначала вставьте WireGuard-конфиг"
+                    reduce { state.copy(inputError = message) }
+                    postSideEffect(VpnSideEffect.ShowMessage(message))
+                    return@intent
+                }
+                pending = PendingConnection.WireGuard(config)
+                reduce { state.copy(inputError = null) }
+            }
         }
 
         if (needsNotificationPermission()) {
@@ -96,43 +143,164 @@ class VpnViewModel(
         }
     }
 
+    fun onLogin(baseUrl: String, username: String, password: String) = intent {
+        val server = baseUrl.trim()
+        val user = username.trim()
+        if (server.isEmpty() || user.isEmpty() || password.isEmpty()) {
+            val message = "Заполните auth-сервер, логин и пароль"
+            reduce { state.copy(authError = message) }
+            return@intent
+        }
+
+        reduce { state.copy(isLoggingIn = true, authError = null) }
+        val result = runCatching {
+            authRepository.login(server, user, password)
+        }
+
+        result.onSuccess { session ->
+            wireGuardConfig = session.wireGuardConfig ?: wireGuardConfig
+            runCatching {
+                settingsRepository.saveAuth(
+                    token = session.token,
+                    username = session.username,
+                    expiresAtEpochSeconds = session.expiresAtEpochSeconds,
+                    baseUrl = server,
+                )
+            }
+            val provisionedConfig = session.wireGuardConfig
+            if (provisionedConfig != null) {
+                runCatching { settingsRepository.saveWireGuardConfig(provisionedConfig) }
+            }
+            val profile = wireGuardConfig?.let {
+                runCatching { WireGuardConfigParser.profile(it) }.getOrNull()
+            }
+            reduce {
+                state.copy(
+                    isLoggedIn = true,
+                    isLoggingIn = false,
+                    authError = null,
+                    username = session.username,
+                    authBaseUrl = server,
+                    token = session.token,
+                    hasWireGuardConfig = wireGuardConfig != null,
+                    wireGuardEndpoint = profile?.endpoint,
+                    wireGuardAddress = profile?.addresses,
+                )
+            }
+            logStore.append("Вход выполнен: ${session.username}")
+        }.onFailure { error ->
+            val message = error.message ?: "Не удалось войти"
+            reduce { state.copy(isLoggingIn = false, authError = message) }
+            logStore.append("Ошибка входа: $message")
+        }
+    }
+
+    fun onAuthInputChanged() = intent {
+        if (state.authError != null) {
+            reduce { state.copy(authError = null) }
+        }
+    }
+
+    fun onLogout() = intent {
+        if (state.isActive) {
+            controller.disconnect()
+        }
+        wireGuardConfig = null
+        runCatching { settingsRepository.clearAuth() }
+        runCatching { settingsRepository.clearWireGuardConfig() }
+        reduce {
+            state.copy(
+                isLoggedIn = false,
+                username = "",
+                token = "",
+                hasWireGuardConfig = false,
+                wireGuardEndpoint = null,
+                wireGuardAddress = null,
+                authError = null,
+            )
+        }
+        logStore.append("Выход из аккаунта")
+    }
+
     fun onDisconnectClicked() = intent {
         if (!state.isActive) return@intent
-
         controller.disconnect()
-        reduce {
-            state.copy(logs = appendLog(state.logs, log("Запрошено отключение")))
-        }
     }
 
     fun onNotificationPermissionResult(granted: Boolean) = intent {
         if (!granted) {
-            reduce {
-                state.copy(
-                    logs = appendLog(
-                        state.logs,
-                        log("Уведомления отключены — туннель продолжит работу"),
-                    ),
-                )
-            }
+            logStore.append("Уведомления отключены — туннель продолжит работу")
         }
         requestVpnConsent()
     }
 
     fun onVpnConsentResult(granted: Boolean) = intent {
         if (!granted) {
-            pendingConfig = null
+            pending = null
             val message = "Без разрешения системы VPN-подключение невозможно"
-            reduce {
-                state.copy(
-                    inputError = message,
-                    logs = appendLog(state.logs, log(message)),
-                )
-            }
+            reduce { state.copy(inputError = message) }
             postSideEffect(VpnSideEffect.ShowMessage(message))
             return@intent
         }
         startTunnel()
+    }
+
+    fun onModeChanged(mode: VpnMode) = intent {
+        if (state.isActive || state.isLoading || state.mode == mode) return@intent
+        reduce { state.copy(mode = mode, inputError = null) }
+        runCatching { settingsRepository.saveMode(mode) }
+            .onFailure { logStore.append("Не удалось сохранить режим") }
+        logStore.append(
+            when (mode) {
+                VpnMode.SIMPLIFIED -> "Выбран упрощённый режим GuardWire/2"
+                VpnMode.REAL -> "Выбран реальный режим WireGuard"
+            },
+        )
+    }
+
+    fun onWireGuardConfigSaved(configText: String) = intent {
+        val profile = try {
+            WireGuardConfigParser.profile(configText)
+        } catch (e: Exception) {
+            val message = e.message ?: "Некорректный WireGuard-конфиг"
+            reduce { state.copy(inputError = message) }
+            postSideEffect(VpnSideEffect.ShowMessage(message))
+            return@intent
+        }
+
+        wireGuardConfig = configText
+        runCatching { settingsRepository.saveWireGuardConfig(configText) }
+            .onFailure {
+                logStore.append("Не удалось сохранить WireGuard-конфиг")
+                reduce { state.copy(inputError = "Не удалось сохранить WireGuard-конфиг") }
+                return@intent
+            }
+        reduce {
+            state.copy(
+                hasWireGuardConfig = true,
+                wireGuardEndpoint = profile.endpoint,
+                wireGuardAddress = profile.addresses,
+                inputError = null,
+            )
+        }
+        logStore.append("WireGuard: конфиг сохранён")
+        postSideEffect(VpnSideEffect.ShowMessage("WireGuard-конфиг сохранён"))
+    }
+
+    fun onWireGuardConfigCleared() = intent {
+        if (state.isActive) return@intent
+        wireGuardConfig = null
+        runCatching { settingsRepository.clearWireGuardConfig() }
+            .onFailure { logStore.append("Не удалось удалить WireGuard-конфиг") }
+        reduce {
+            state.copy(
+                hasWireGuardConfig = false,
+                wireGuardEndpoint = null,
+                wireGuardAddress = null,
+                inputError = null,
+            )
+        }
+        logStore.append("WireGuard: конфиг удалён")
     }
 
     fun onHostChanged(value: String) = intent {
@@ -146,6 +314,10 @@ class VpnViewModel(
 
     fun onTokenChanged(value: String) = intent {
         reduce { state.copy(token = value, inputError = null) }
+    }
+
+    fun onLogsCleared() = intent {
+        logStore.clear()
     }
 
     private suspend fun Syntax<VpnUiState, VpnSideEffect>.readConfig(): VpnServerConfig? {
@@ -182,16 +354,20 @@ class VpnViewModel(
     }
 
     private suspend fun Syntax<VpnUiState, VpnSideEffect>.startTunnel() {
-        val config = pendingConfig
-        if (config == null) {
-            postSideEffect(VpnSideEffect.ShowMessage("Настройки потеряны, попробуйте ещё раз"))
-            return
-        }
+        when (val connection = pending) {
+            is PendingConnection.GuardWire -> {
+                pending = null
+                controller.connect(connection.config)
+            }
 
-        pendingConfig = null
-        controller.connect(config)
-        reduce {
-            state.copy(logs = appendLog(state.logs, log("Запуск VPN-сервиса…")))
+            is PendingConnection.WireGuard -> {
+                pending = null
+                controller.connectWireGuard(connection.configText)
+            }
+
+            null -> {
+                postSideEffect(VpnSideEffect.ShowMessage("Настройки потеряны, попробуйте ещё раз"))
+            }
         }
     }
 
@@ -202,26 +378,12 @@ class VpnViewModel(
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
 
-    private fun describe(runtime: VpnRuntimeState): String {
-        val endpoint = runtime.server?.endpoint ?: "сервер"
-        return when (val connection = runtime.connection) {
-            VpnConnectionState.Disconnected -> "Туннель отключён"
-            VpnConnectionState.Connecting -> "Подключение к $endpoint…"
-            is VpnConnectionState.Connected -> "Туннель установлен: $endpoint"
-            VpnConnectionState.Disconnecting -> "Отключение…"
-            is VpnConnectionState.Failed -> "Ошибка: ${connection.reason}"
-        }
+    private sealed interface PendingConnection {
+        data class GuardWire(val config: VpnServerConfig) : PendingConnection
+        data class WireGuard(val configText: String) : PendingConnection
     }
 
-    private fun log(message: String): VpnLogEntry =
-        VpnLogEntry(time = timeFormat.format(Date()), message = message)
-
-    private fun appendLog(logs: List<VpnLogEntry>, entry: VpnLogEntry): List<VpnLogEntry> =
-        (logs + entry).takeLast(MAX_LOG_LINES)
-
     companion object {
-        private const val MAX_LOG_LINES = 8
-
         fun factory(
             controller: VpnController,
             settingsRepository: VpnSettingsRepository,

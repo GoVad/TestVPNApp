@@ -1,6 +1,7 @@
 package com.haruchka.testvpnapp.core.vpn
 
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import com.haruchka.testvpnapp.core.model.VpnTrafficStats
@@ -12,31 +13,34 @@ import kotlinx.coroutines.flow.update
 /**
  * Единственный источник состояния VPN-движка в процессе приложения.
  *
- * [GuardWireVpnService] пишет сюда, а `VpnController` и UI читают. Это упрощённая
- * замена bound-сервису и DI-графу: для демо достаточно, но в реальном приложении
- * состояние лучше отдавать через Binder/DI и хранить вне глобального объекта.
- *
- * [companion] `shared` — тот же экземпляр, который создаёт сервис системой.
+ * [GuardWireVpnService] и WireGuard-контроллер пишут сюда, а `VpnController`
+ * и UI читают.
  */
 class VpnStateStore {
 
     private val _state = MutableStateFlow(VpnRuntimeState())
     val state: StateFlow<VpnRuntimeState> = _state.asStateFlow()
 
-    internal fun markConnecting(server: VpnServerConfig) {
+    internal fun markConnecting(mode: VpnMode, server: VpnServerConfig? = null) {
         _state.update {
             VpnRuntimeState(
                 connection = VpnConnectionState.Connecting,
                 server = server,
+                mode = mode,
             )
         }
     }
 
-    internal fun markConnected(server: VpnServerConfig, sinceEpochMillis: Long) {
+    internal fun markConnected(
+        mode: VpnMode,
+        sinceEpochMillis: Long,
+        server: VpnServerConfig? = null,
+    ) {
         _state.update {
             it.copy(
                 connection = VpnConnectionState.Connected(sinceEpochMillis),
                 server = server,
+                mode = mode,
             )
         }
     }
@@ -50,10 +54,7 @@ class VpnStateStore {
             if (current.connection == VpnConnectionState.Disconnected) {
                 current
             } else {
-                current.copy(
-                    connection = VpnConnectionState.Disconnecting,
-                    stats = current.stats,
-                )
+                current.copy(connection = VpnConnectionState.Disconnecting)
             }
         }
     }

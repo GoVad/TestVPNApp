@@ -1,54 +1,197 @@
 package com.haruchka.testvpnapp.core.vpn
 
 import android.content.Context
+import android.util.Base64
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+
+/** Настройки, сохранённые между запусками. Секреты лежат в зашифрованном виде. */
+data class VpnStoredSettings(
+    val mode: VpnMode = VpnMode.SIMPLIFIED,
+    val guardWire: VpnServerConfig = VpnServerConfig(),
+    val wireGuardConfig: String? = null,
+    val authToken: String? = null,
+    val authUsername: String? = null,
+    val authExpiresAt: Long = 0L,
+    val authBaseUrl: String = "http://${VpnServerConfig().host}:8090",
+)
+
+private val Context.vpnSettingsDataStore by preferencesDataStore(name = "vpn_settings")
 
 /**
- * Простое хранилище последних настроек сервера.
+ * DataStore для настроек VPN.
  *
- * В демо PSK-токен лежит в обычных SharedPreferences. В реальном приложении
- * его нужно хранить через Android Keystore / EncryptedSharedPreferences.
+ * Не секретные поля (host, port, режим) лежат открыто; токен GuardWire и
+ * WireGuard-конфиг (в нём приватный ключ) шифруются ключом Android Keystore.
  */
 class VpnSettingsRepository(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences(
-        PREFS_NAME,
-        Context.MODE_PRIVATE,
-    )
+    private val appContext = context.applicationContext
+    private val dataStore = appContext.vpnSettingsDataStore
+    private val cipher = SecretCipher()
 
-    fun load(): VpnServerConfig {
+    suspend fun load(): VpnStoredSettings = withContext(Dispatchers.IO) {
+        val prefs = dataStore.data.first()
+        val mode = prefs[KEY_MODE]?.let { runCatching { VpnMode.valueOf(it) }.getOrNull() }
+            ?: VpnMode.SIMPLIFIED
+
         val defaults = VpnServerConfig()
-        val port = prefs.getInt(KEY_PORT, defaults.port)
-        return VpnServerConfig(
-            host = prefs.getString(KEY_HOST, defaults.host) ?: defaults.host,
-            port = if (port in 1..65_535) port else defaults.port,
-            token = prefs.getString(KEY_TOKEN, defaults.token) ?: defaults.token,
-            mtu = prefs.getInt(KEY_MTU, defaults.mtu),
-            dnsServer = prefs.getString(KEY_DNS, defaults.dnsServer) ?: defaults.dnsServer,
-            tunnelAddress = defaults.tunnelAddress,
-            tunnelPrefixLength = defaults.tunnelPrefixLength,
-            keepAliveSeconds = prefs.getInt(KEY_KEEP_ALIVE, defaults.keepAliveSeconds),
+        var guardWire = VpnServerConfig(
+            host = prefs[KEY_HOST] ?: defaults.host,
+            port = prefs[KEY_PORT] ?: defaults.port,
+            token = prefs[KEY_TOKEN]?.let(cipher::decrypt) ?: defaults.token,
+        )
+
+        // Мягкая миграция со старого SharedPreferences-хранилища.
+        if (prefs[KEY_HOST] == null) {
+            val legacy = legacyGuardWire()
+            if (legacy != null) {
+                guardWire = legacy
+                saveGuardWire(legacy)
+            }
+        }
+
+        val wireGuardConfig = prefs[KEY_WG_CONFIG]?.let(cipher::decrypt)
+        VpnStoredSettings(
+            mode = mode,
+            guardWire = guardWire,
+            wireGuardConfig = wireGuardConfig,
+            authToken = prefs[KEY_AUTH_TOKEN]?.let(cipher::decrypt),
+            authUsername = prefs[KEY_AUTH_USER],
+            authExpiresAt = prefs[KEY_AUTH_EXPIRES]?.toLongOrNull() ?: 0L,
+            authBaseUrl = prefs[KEY_AUTH_URL] ?: "http://${guardWire.host}:8090",
         )
     }
 
-    fun save(config: VpnServerConfig) {
-        prefs.edit()
-            .putString(KEY_HOST, config.host)
-            .putInt(KEY_PORT, config.port)
-            .putString(KEY_TOKEN, config.token)
-            .putInt(KEY_MTU, config.mtu)
-            .putString(KEY_DNS, config.dnsServer)
-            .putInt(KEY_KEEP_ALIVE, config.keepAliveSeconds)
-            .apply()
+    suspend fun saveMode(mode: VpnMode): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit { it[KEY_MODE] = mode.name }
+    }
+
+    suspend fun saveGuardWire(config: VpnServerConfig): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit {
+            it[KEY_HOST] = config.host
+            it[KEY_PORT] = config.port
+            it[KEY_TOKEN] = cipher.encrypt(config.token)
+        }
+    }
+
+    suspend fun saveWireGuardConfig(config: String): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit { it[KEY_WG_CONFIG] = cipher.encrypt(config) }
+    }
+
+    suspend fun clearWireGuardConfig(): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit { it.remove(KEY_WG_CONFIG) }
+    }
+
+    suspend fun saveAuth(
+        token: String,
+        username: String,
+        expiresAtEpochSeconds: Long,
+        baseUrl: String,
+    ): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit {
+            it[KEY_AUTH_TOKEN] = cipher.encrypt(token)
+            it[KEY_AUTH_USER] = username
+            it[KEY_AUTH_EXPIRES] = expiresAtEpochSeconds.toString()
+            it[KEY_AUTH_URL] = baseUrl
+        }
+    }
+
+    suspend fun clearAuth(): Unit = withContext(Dispatchers.IO) {
+        dataStore.edit {
+            it.remove(KEY_AUTH_TOKEN)
+            it.remove(KEY_AUTH_USER)
+            it.remove(KEY_AUTH_EXPIRES)
+        }
+    }
+
+    private fun legacyGuardWire(): VpnServerConfig? {
+        val prefs = appContext.getSharedPreferences("guardwire_settings", Context.MODE_PRIVATE)
+        if (!prefs.contains("host")) return null
+        val defaults = VpnServerConfig()
+        val port = prefs.getInt("port", defaults.port)
+        return VpnServerConfig(
+            host = prefs.getString("host", defaults.host) ?: defaults.host,
+            port = if (port in 1..65_535) port else defaults.port,
+            token = prefs.getString("token", defaults.token) ?: defaults.token,
+        )
     }
 
     private companion object {
-        const val PREFS_NAME = "guardwire_settings"
-        const val KEY_HOST = "host"
-        const val KEY_PORT = "port"
-        const val KEY_TOKEN = "token"
-        const val KEY_MTU = "mtu"
-        const val KEY_DNS = "dns"
-        const val KEY_KEEP_ALIVE = "keep_alive_seconds"
+        val KEY_MODE = stringPreferencesKey("mode")
+        val KEY_HOST = stringPreferencesKey("host")
+        val KEY_PORT = intPreferencesKey("port")
+        val KEY_TOKEN = stringPreferencesKey("token_encrypted")
+        val KEY_WG_CONFIG = stringPreferencesKey("wireguard_config_encrypted")
+        val KEY_AUTH_TOKEN = stringPreferencesKey("auth_token_encrypted")
+        val KEY_AUTH_USER = stringPreferencesKey("auth_username")
+        val KEY_AUTH_EXPIRES = stringPreferencesKey("auth_expires_at")
+        val KEY_AUTH_URL = stringPreferencesKey("auth_base_url")
+    }
+}
+
+/** AES-GCM ключ из Android Keystore; приватный материал не покидает Keystore. */
+private class SecretCipher {
+
+    private val keyStore: KeyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+
+    fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(cipher.iv + ciphertext, Base64.NO_WRAP)
+    }
+
+    fun decrypt(value: String): String? = runCatching {
+        val bytes = Base64.decode(value, Base64.NO_WRAP)
+        require(bytes.size > IV_SIZE)
+        val iv = bytes.copyOfRange(0, IV_SIZE)
+        val ciphertext = bytes.copyOfRange(IV_SIZE, bytes.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            getOrCreateKey(),
+            GCMParameterSpec(TAG_BITS, iv),
+        )
+        cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
+    }.getOrNull()
+
+    private fun getOrCreateKey(): SecretKey {
+        (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .build(),
+        )
+        return generator.generateKey()
+    }
+
+    private companion object {
+        const val KEYSTORE = "AndroidKeyStore"
+        const val ALIAS = "guardwire_settings_key_v1"
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val TAG_BITS = 128
+        const val IV_SIZE = 12
     }
 }

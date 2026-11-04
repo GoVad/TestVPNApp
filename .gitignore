@@ -37,6 +37,7 @@ local.properties
 
 # ---------- Python (demo-сервер) ----------
 __pycache__/
+tools/.guardwire-*
 *.py[cod]
 .venv/
 venv/

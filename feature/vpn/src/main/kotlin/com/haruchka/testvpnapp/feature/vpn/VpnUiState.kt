@@ -1,19 +1,25 @@
 package com.haruchka.testvpnapp.feature.vpn
 
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
+import com.haruchka.testvpnapp.core.model.VpnLogEntry
+import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
-
-/** Запись в журнале событий на экране. */
-data class VpnLogEntry(
-    val time: String,
-    val message: String,
-)
 
 /** Состояние экрана VPN. */
 data class VpnUiState(
+    val isLoading: Boolean = true,
+    val isLoggedIn: Boolean = false,
+    val username: String = "",
+    val authBaseUrl: String = "http://10.0.2.2:8090",
+    val isLoggingIn: Boolean = false,
+    val authError: String? = null,
+    val mode: VpnMode = VpnMode.SIMPLIFIED,
     val host: String = "",
     val port: String = "",
     val token: String = "",
+    val hasWireGuardConfig: Boolean = false,
+    val wireGuardEndpoint: String? = null,
+    val wireGuardAddress: String? = null,
     val runtime: VpnRuntimeState = VpnRuntimeState(),
     val nowMillis: Long = System.currentTimeMillis(),
     val inputError: String? = null,
@@ -28,10 +34,16 @@ data class VpnUiState(
             connection is VpnConnectionState.Disconnecting
 
     val fieldsEnabled: Boolean
-        get() = !isActive
+        get() = !isActive && !isLoading
 
     val connectedDurationSeconds: Long
         get() = (connection as? VpnConnectionState.Connected)?.let {
             ((nowMillis - it.sinceEpochMillis) / 1_000L).coerceAtLeast(0L)
         } ?: 0L
+
+    val endpoint: String?
+        get() = when (mode) {
+            VpnMode.SIMPLIFIED -> runtime.server?.endpoint
+            VpnMode.REAL -> wireGuardEndpoint
+        }
 }

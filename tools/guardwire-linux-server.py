@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 
+import guardwire_auth
 import guardwire_crypto as gw
 
 TUNSETIFF = 0x400454CA
@@ -327,8 +328,14 @@ class Server:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 with conn:
                     conn.settimeout(10.0)
+                    token = self.args.token
+                    if self.args.auth_token_file:
+                        token = guardwire_auth.load_active_token(self.args.auth_token_file) or ""
+                        if not token:
+                            print("[-] Нет активного auth-токена, клиент отклонён")
+                            continue
                     try:
-                        session = gw.server_handshake(conn, self.args.token)
+                        session = gw.server_handshake(conn, token)
                     except (TimeoutError, OSError, gw.CryptoError) as error:
                         print(f"[-] Handshake error: {error}")
                         session = None
@@ -422,7 +429,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--host", default="0.0.0.0", help="адрес прослушивания")
     parser.add_argument("--port", type=int, default=8443, help="TCP-порт")
-    parser.add_argument("--token", default="demo", help="PSK-токен (общий секрет с приложением)")
+    parser.add_argument("--token", default="demo", help="статический PSK-токен")
+    parser.add_argument("--auth-token-file", default=None, help="файл активного auth-токена")
     parser.add_argument("--tun", default="guardwire0", help="имя TUN-интерфейса")
     parser.add_argument("--server-ip", default="10.8.0.1", help="IP сервера внутри туннеля")
     parser.add_argument("--client-network", default="10.8.0.0/24", help="подсеть клиентов")

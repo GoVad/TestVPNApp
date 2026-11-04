@@ -1,24 +1,26 @@
 # GuardWire VPN
 
 **Учебный VPN-клиент для Android.** Демонстрирует, как устроено собственное
-VPN-приложение: `VpnService`, TUN-интерфейс, foreground-сервис, собственный
-протокол поверх TCP, модульная архитектура и MVVM + Orbit MVI.
+VPN-приложение: `VpnService`, TUN-интерфейс, foreground-сервис, два режима
+(учебный GuardWire/2 и реальный WireGuard), модульная архитектура и MVVM + Orbit MVI.
 
-> **Статус: демо.** GuardWire/2 — учебный протокол из этого репозитория, а не
-> промышленный стандарт. Трафик шифруется ECDH P-256 + AES-256-GCM, но схема
-> не проходила аудит. Для реального интернета нужен сервер с маршрутизацией:
-> в комплекте есть Linux TUN + NAT.
+> **Статус: демо.** В приложении два режима:
+> **«Упрощённая»** — учебный GuardWire/2 (ECDH P-256 + AES-GCM),
+> **«Реальная»** — официальная библиотека WireGuard (UDP, Noise_IK).
+> Оба режима не заменяют production-VPN, но реальный режим использует
+> проверенный протокол. Для интернета нужен сервер с маршрутизацией.
 
 Как перенести это в реальный проект — см. **[theory.md](theory.md)**.
 
 ## Быстрый старт
 
 ```bash
-# 0. один раз: venv и зависимости Python-серверов
+# 0. если cryptography ещё нет — создайте venv:
 ./tools/setup-python.sh
+#    и далее используйте .venv/bin/python вместо python3
 
 # 1. поднять полноценный тестовый VPN-сервер (Linux, нужен root)
-sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo
+sudo python3 tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo
 # если включён ufw: sudo ufw allow 8443/tcp
 
 # 2. собрать приложение
@@ -27,16 +29,25 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 
 Если `cryptography` уже установлен в системном Python, venv не обязателен:
 проверьте `python3 -c "import cryptography"` и запускайте через `python3`.
-Не используйте `pip install --break-system-packages` — лучше venv.
+Если пакета нет — `./tools/setup-python.sh` и `.venv/bin/python`.
+Не используйте `pip install --break-system-packages`.
 
 Телефон и ПК должны быть в одной локальной сети. Сервер напечатает LAN-адрес
 компьютера — его и укажите в приложении вместе с портом `8443` и токеном
 `demo`.
 
-Если нужен только handshake и проверка кадров без маршрутизации в интернет:
+Для реального режима поднимите WireGuard-сервер на этом же ПК:
 
 ```bash
-.venv/bin/python tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+sudo apt install wireguard-tools
+sudo ./tools/wireguard-server-setup.sh
+# клиентский конфиг: ~/guardwire-wireguard/phone.conf
+```
+
+Если нужен только handshake и проверка GuardWire без маршрутизации:
+
+```bash
+python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 ```
 
 Для эмулятора host — `10.0.2.2`. Для физического устройства по USB можно
@@ -112,7 +123,7 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 
 ### 2.5. Повторный запуск приложения
 
-- Настройки сервера сохраняются в `SharedPreferences` и подставляются в форму.
+- Настройки и зашифрованные секреты сохраняются в DataStore и подставляются в форму.
 - Если процесс приложения был убит, VPN-сервис также останавливается; новое
   состояние начинается с «Отключено».
 
@@ -124,7 +135,7 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 |----|------------|------------|
 | FR-1 | Системный запрос согласия на VPN | `VpnService.prepare()` + `ActivityResultContracts.StartActivityForResult` |
 | FR-2 | Запуск VPN только после согласия | `VpnController.connect()` вызывается из `onVpnConsentResult(granted = true)` |
-| FR-3 | Foreground-сервис с постоянным уведомлением | `GuardWireVpnService`, `startForeground`, канал `guardwire_vpn` |
+| FR-3 | Foreground-сервис с постоянным уведомлением | `GuardWireVpnService` и `VpnNotificationService`, `startForeground` |
 | FR-4 | Создание TUN с заданными параметрами | `VpnService.Builder`: `10.8.0.2/32`, `0.0.0.0/0`, DNS `1.1.1.1`, MTU 1400 |
 | FR-5 | Защита сокета туннеля от собственного TUN | `VpnService.protect(socket)` до `connect()` |
 | FR-6 | Рукопожатие GuardWire/2 с PSK-аутентификацией | ECDH P-256 + HMAC-SHA256, `GuardWireClient` + `GuardWireHandshakeCodec` |
@@ -133,10 +144,13 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 | FR-9 | Статистика трафика | `TrafficMeter` → `VpnStateStore` → Orbit state |
 | FR-10 | Корректное отключение и отзыв | `shutdown()`/`onRevoke()`, закрытие TUN, сокета и корутин |
 | FR-11 | Отображение ошибок | `VpnConnectionState.Failed` + snackbar для ошибок ввода |
-| FR-12 | Сохранение настроек сервера | `VpnSettingsRepository` на `SharedPreferences` |
+| FR-12 | Сохранение настроек и секретов | DataStore; токен и WireGuard-конфиг шифруются Android Keystore |
 | FR-13 | Stateless Compose UI | `VpnScreen` принимает состояние и колбэки |
 | FR-14 | MVVM + Orbit | `VpnViewModel` с `intent` → `reduce` → `postSideEffect` |
 | FR-15 | Шифрование кадров | AES-256-GCM, случайный IV, тип кадра в AAD |
+| FR-16 | Реальный режим WireGuard | `com.wireguard.android:tunnel`, `WireGuardController`, UDP + Noise_IK |
+| FR-17 | Отдельный экран логов | `VpnLogStore` + `VpnLogsScreen` |
+| FR-18 | Запрет IPv6 | IPv4-only маршруты; IPv6 в WireGuard-конфиге отклоняется |
 
 ---
 
@@ -144,14 +158,15 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 
 ### 4.1. Экран
 
-- Заголовок `GuardWire` и бейдж `DEMO`.
-- Круглая кнопка питания: цвет и свечение зависят от состояния.
+- Заголовок `GuardWire`, бейдж `DEMO` и кнопка «Логи».
+- Переключатель «Упрощённая / Реальная».
 - Статус: «Отключено», «Подключение…», «Защищено», «Отключение…», «Ошибка».
 - Кнопка действия: «Подключиться», «Отключиться», «Подключиться снова».
-- Карточка сервера: host/IP, порт, токен (с переключателем видимости).
+- Для упрощённого режима: host/IP, порт, PSK-токен.
+- Для реального режима: зашифрованный WireGuard-профиль (address, endpoint).
 - Карточка статистики: длительность, входящий/исходящий трафик, пакеты,
   endpoint и MTU.
-- Журнал последних событий.
+- Журнал последних событий + отдельный экран «Логи».
 - Блок «Как это работает» и предупреждение об ограничениях демо.
 
 ### 4.2. Состояния
@@ -199,7 +214,7 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 |--------|------------|------------|
 | `:app` | Activity, тема, ручной DI-граф | Compose, Activity |
 | `:feature:vpn` | Экран, Orbit ViewModel, side effects | Compose, Orbit |
-| `:core:vpn` | `VpnService`, TUN-мост, контроллер, настройки | Android SDK |
+| `:core:vpn` | GuardWire-сервис, WireGuard-контроллер, DataStore/Keystore, логи | Android SDK, WireGuard |
 | `:core:protocol` | GuardWire/2: кадры, handshake, ECDH/AES, TCP-клиент | Kotlin/JVM |
 | `:core:model` | Модели состояния и конфигурации | Kotlin/JVM |
 
@@ -214,10 +229,10 @@ sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443
 ### 5.3. Поток состояния
 
 ```
-GuardWireVpnService
-        │  состояние, статистика
+GuardWireVpnService / WireGuardController
+        │  состояние, статистика, логи
         ▼
-VpnStateStore.shared (StateFlow)
+VpnStateStore.shared / VpnLogStore.shared
         │
         ▼
 VpnController.state
@@ -431,6 +446,72 @@ PSK-ECDH проще: общий секрет уже есть в настройк
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
+### WireGuard-сервер (реальный режим)
+
+На Linux-ПК с root:
+
+```bash
+sudo apt install wireguard-tools
+sudo ./tools/wireguard-server-setup.sh
+```
+
+Скрипт создаёт `/etc/wireguard/wg0.conf`, поднимает интерфейс и кладёт
+клиентский конфиг в `~/guardwire-wireguard/phone.conf` (не в репозиторий).
+В приложении выберите режим **«Реальная»** и вставьте этот конфиг через
+кнопку «Вставить конфиг». Конфиг с IPv6 будет отклонён.
+
+Проверка:
+
+```bash
+sudo wg show
+adb shell ping -c 2 10.66.0.1
+adb shell ping -c 2 8.8.8.8
+adb shell 'curl -s https://ifconfig.me; echo'
+```
+
+### Auth-сервер и вход
+
+Для проверки только логина и GuardWire (без прав root):
+
+```bash
+python3 tools/guardwire-auth-server.py \
+    --host 0.0.0.0 --port 8090 \
+    --user demo:demo \
+    --disable-wireguard
+```
+
+GuardWire-сервер должен читать выданный токен:
+
+```bash
+python3 tools/guardwire-demo-server.py \
+    --host 0.0.0.0 --port 8443 \
+    --auth-token-file tools/.guardwire-token
+```
+
+Для реального режима auth-сервер запускается с root и сам добавляет WireGuard peer:
+
+```bash
+sudo python3 tools/guardwire-auth-server.py \
+    --host 0.0.0.0 --port 8090 \
+    --user demo:demo \
+    --wg-interface wg0 \
+    --wg-endpoint 192.168.100.4:51820
+```
+
+В приложении на экране входа:
+
+- auth-сервер: `http://192.168.100.4:8090`
+- логин: `demo`
+- пароль: `demo`
+
+Для упрощённого режима токен автоматически становится PSK. Для реального
+режима auth-сервер выдаёт параметры WireGuard, а приватный ключ генерируется
+на устройстве. Токен и WireGuard-конфиг хранятся в DataStore зашифрованными.
+
+> Auth-сервер использует HTTP без TLS — это только для теста в доверенной
+> локальной сети. В приложении для этого включён `usesCleartextTraffic`.
+> Для production нужен HTTPS.
+
 ### Полноценный тестовый сервер (Linux, TUN + NAT)
 
 Сервер создаёт TUN `guardwire0`, включает IPv4 forwarding и NAT через
@@ -441,7 +522,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`.
 сети не передаётся.
 
 ```bash
-sudo .venv/bin/python tools/guardwire-linux-server.py \
+sudo python3 tools/guardwire-linux-server.py \
     --host 0.0.0.0 \
     --port 8443 \
     --token demo
@@ -490,7 +571,7 @@ sudo ufw allow 8443/tcp
 интернета:
 
 ```bash
-.venv/bin/python tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 ```
 
 Сервер выполняет GuardWire/2 handshake, расшифровывает кадры, отвечает на PING
@@ -571,6 +652,8 @@ adb reverse tcp:8443 tcp:8443
   (ECDH + AES-GCM) по локальной сети.
 - Linux-сервер с шифрованием: handshake, зашифрованный ICMP через TUN,
   правила NAT и cleanup проверены в network namespace.
+- Реальный режим WireGuard проверен на телефоне: handshake, ping 10.66.0.1,
+  ping 8.8.8.8, DNS и curl через туннель; конфиг сохраняется в DataStore.
 
 ---
 
@@ -583,9 +666,11 @@ adb reverse tcp:8443 tcp:8443
   Токен `demo` годится только для теста; берите длинный случайный PSK.
 - **Нет tun2socks.** Клиент не разбирает TCP/UDP и не проксирует их в сокеты;
   сервер должен сам маршрутизировать IP-пакеты.
-- **Нет IPv6, split tunneling, always-on VPN, DNS leak protection.**
-- **Токен хранится в обычных `SharedPreferences`.** Для продакшена нужен
-  Keystore/EncryptedSharedPreferences.
+- **IPv6 запрещён.** Маршрутизируется только IPv4; IPv6-конфиг отклоняется.
+- **Нет split tunneling, always-on VPN, DNS leak protection.**
+- **Секреты в DataStore.** PSK и WireGuard-конфиг шифруются ключом Android
+  Keystore, но общего аудита и ротации ключей нет.
+- **Auth-сервер использует HTTP без TLS.** Только для доверенной тестовой сети.
 - **`VpnStateStore.shared` — глобальный объект.** Для демо достаточно; в
   большом приложении состояние лучше отдавать через bound-сервис/DI.
 - **`specialUse` FGS type.** Для Google Play требуется декларация назначения и
@@ -603,7 +688,8 @@ adb reverse tcp:8443 tcp:8443
 - IPv6 и управление маршрутами.
 - Split tunneling и `addDisallowedApplication`.
 - Always-on VPN и блокировка при падении туннеля.
-- Keystore/EncryptedSharedPreferences для токена и профилей.
+- Логин/пароль, серверный control plane и сессионные токены.
+- Аудит криптографии и ротация ключей.
 - Bound-сервис или DI (Hilt/Koin) вместо глобального store.
 - Тесты ViewModel с Orbit test-раннером.
 - CI: сборка, unit-тесты, lint.
@@ -617,6 +703,9 @@ adb reverse tcp:8443 tcp:8443
 | [GuardWireVpnService.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireVpnService.kt) | наследование `VpnService`, TUN, foreground-уведомление |
 | [GuardWireTunnel.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireTunnel.kt) | TUN ↔ GuardWire, keep-alive, счётчики |
 | [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | фасад для UI: consent, запуск, остановка |
+| [WireGuardController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/WireGuardController.kt) | реальный режим на библиотеке WireGuard |
+| [VpnSettingsRepository.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnSettingsRepository.kt) | DataStore + Keystore для секретов |
+| [VpnLogStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnLogStore.kt) | общий журнал событий |
 | [VpnStateStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnStateStore.kt) | единый источник состояния |
 | [GuardWireClient.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireClient.kt) | TCP-подключение, `protect(socket)`, handshake |
 | [GuardWireCrypto.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireCrypto.kt) | ECDH, HKDF, HMAC, AES-GCM |
@@ -624,8 +713,11 @@ adb reverse tcp:8443 tcp:8443
 | [GuardWireHandshakeCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireHandshakeCodec.kt) | формат рукопожатия |
 | [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Orbit: intents → reduce → side effects |
 | [VpnScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnScreen.kt) | stateless Compose UI |
+| [VpnLogsScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnLogsScreen.kt) | отдельный экран логов |
 | [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | сборка экрана и DI-графа |
 | [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки handshake и кадров |
 | [guardwire_crypto.py](tools/guardwire_crypto.py) | серверная и клиентская криптография GuardWire/2 |
+| [guardwire-auth-server.py](tools/guardwire-auth-server.py) | логин/пароль, токены и WireGuard provisioning |
 | [guardwire-linux-server.py](tools/guardwire-linux-server.py) | Linux TUN + NAT: реальный интернет через VPN |
+| [wireguard-server-setup.sh](tools/wireguard-server-setup.sh) | разовая настройка тестового WireGuard-сервера |
 | [theory.md](theory.md) | пошаговый путь от демо к production-VPN |

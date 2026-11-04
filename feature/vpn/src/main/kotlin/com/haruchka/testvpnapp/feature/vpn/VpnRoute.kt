@@ -12,7 +12,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -37,6 +39,7 @@ fun VpnRoute(
     }
     val viewModel: VpnViewModel = viewModel(factory = factory)
     val state by viewModel.collectAsState()
+    var showLogs by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -62,6 +65,30 @@ fun VpnRoute(
         }
     }
 
+    if (!state.isLoggedIn) {
+        LoginScreen(
+            initialBaseUrl = state.authBaseUrl,
+            isLoading = state.isLoggingIn,
+            error = state.authError,
+            onInputChanged = { viewModel.onAuthInputChanged() },
+            onLogin = { baseUrl, username, password ->
+                viewModel.onLogin(baseUrl, username, password)
+            },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
+    if (showLogs) {
+        VpnLogsScreen(
+            logs = state.logs,
+            onClose = { showLogs = false },
+            onClear = { viewModel.onLogsCleared() },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -71,6 +98,12 @@ fun VpnRoute(
             state = state,
             onConnect = { viewModel.onConnectClicked() },
             onDisconnect = { viewModel.onDisconnectClicked() },
+            onModeChange = { viewModel.onModeChanged(it) },
+            onShowLogs = { showLogs = true },
+            onLogout = { viewModel.onLogout() },
+            username = state.username,
+            onWireGuardConfigSaved = { viewModel.onWireGuardConfigSaved(it) },
+            onWireGuardConfigCleared = { viewModel.onWireGuardConfigCleared() },
             onHostChange = { viewModel.onHostChanged(it) },
             onPortChange = { viewModel.onPortChanged(it) },
             onTokenChange = { viewModel.onTokenChanged(it) },

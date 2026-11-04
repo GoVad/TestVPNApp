@@ -22,5 +22,7 @@ dependencies {
     api(project(":core:model"))
     implementation(project(":core:protocol"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.wireguard.tunnel)
 }

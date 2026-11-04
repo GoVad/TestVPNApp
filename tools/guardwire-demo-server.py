@@ -21,6 +21,7 @@ import socket
 import threading
 import time
 
+import guardwire_auth
 import guardwire_crypto as gw
 
 FRAME_DATA = 0x01
@@ -38,11 +39,17 @@ FRAME_NAMES = {
 }
 
 
-def handle_client(conn: socket.socket, address: tuple[str, int], token: str) -> None:
+def handle_client(conn: socket.socket, address: tuple[str, int], static_token: str, auth_token_file: str | None) -> None:
     peer = f"{address[0]}:{address[1]}"
     print(f"[+] Подключение: {peer}")
 
     with conn:
+        token = static_token
+        if auth_token_file:
+            token = guardwire_auth.load_active_token(auth_token_file) or ""
+            if not token:
+                print(f"[-] {peer}: нет активного auth-токена")
+                return
         conn.settimeout(10.0)
         try:
             session = gw.server_handshake(conn, token)
@@ -100,7 +107,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="GuardWire demo server")
     parser.add_argument("--host", default="0.0.0.0", help="адрес прослушивания")
     parser.add_argument("--port", type=int, default=8443, help="TCP-порт")
-    parser.add_argument("--token", default="demo", help="PSK-токен")
+    parser.add_argument("--token", default="demo", help="статический PSK-токен")
+    parser.add_argument("--auth-token-file", default=None, help="файл активного auth-токена")
     args = parser.parse_args()
 
     if not args.token:
@@ -111,14 +119,16 @@ def main() -> None:
         server.bind((args.host, args.port))
         server.listen(8)
         print(f"GuardWire/2 demo server слушает {args.host}:{args.port}")
-        print("PSK задан, трафик шифруется AES-256-GCM. IP-пакеты не маршрутизируются.")
+        print("Трафик шифруется AES-256-GCM. IP-пакеты не маршрутизируются.")
+        if args.auth_token_file:
+            print(f"Auth: ожидаю токен из {args.auth_token_file}")
 
         while True:
             conn, address = server.accept()
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             thread = threading.Thread(
                 target=handle_client,
-                args=(conn, address, args.token),
+                args=(conn, address, args.token, args.auth_token_file),
                 daemon=True,
             )
             thread.start()

@@ -24,6 +24,15 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="guardwire-demo-vpn" />
         </service>
+
+        <service
+            android:name=".VpnNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="guardwire-wireguard-notification" />
+        </service>
     </application>
 
 </manifest>
