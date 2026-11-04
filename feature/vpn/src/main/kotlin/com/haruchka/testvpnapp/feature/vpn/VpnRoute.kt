@@ -56,6 +56,11 @@ fun VpnRoute(
         }
     }
 
+    if (state.startupState == StartupState.CHECKING) {
+        StartupScreen(modifier = modifier.fillMaxSize())
+        return
+    }
+
     if (!state.isLoggedIn) {
         LoginScreen(
             initialBaseUrl = state.authBaseUrl,

@@ -1,10 +1,12 @@
-package com.haruchka.testvpnapp.core.vpn
+package com.haruchka.testvpnapp.core.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import android.util.Base64
+import com.haruchka.testvpnapp.core.domain.VpnSettingsStore
+import com.haruchka.testvpnapp.core.domain.VpnStoredSettings
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import kotlinx.coroutines.Dispatchers
@@ -22,17 +24,6 @@ import javax.crypto.spec.GCMParameterSpec
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 
-/** Настройки, сохранённые между запусками. Секреты лежат в зашифрованном виде. */
-data class VpnStoredSettings(
-    val mode: VpnMode = VpnMode.SIMPLIFIED,
-    val guardWire: VpnServerConfig = VpnServerConfig(),
-    val wireGuardConfig: String? = null,
-    val authToken: String? = null,
-    val authUsername: String? = null,
-    val authExpiresAt: Long = 0L,
-    val authBaseUrl: String = "http://${VpnServerConfig().host}:8090",
-)
-
 private val Context.vpnSettingsDataStore by preferencesDataStore(name = "vpn_settings")
 
 /**
@@ -42,13 +33,13 @@ private val Context.vpnSettingsDataStore by preferencesDataStore(name = "vpn_set
  * WireGuard-конфиг (в нём приватный ключ) шифруются ключом Android Keystore.
  */
 @Singleton
-class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Context) {
+class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Context) : VpnSettingsStore {
 
     private val appContext = context.applicationContext
     private val dataStore = appContext.vpnSettingsDataStore
     private val cipher = SecretCipher()
 
-    suspend fun load(): VpnStoredSettings = withContext(Dispatchers.IO) {
+    override suspend fun load(): VpnStoredSettings = withContext(Dispatchers.IO) {
         val prefs = dataStore.data.first()
         val mode = prefs[KEY_MODE]?.let { runCatching { VpnMode.valueOf(it) }.getOrNull() }
             ?: VpnMode.SIMPLIFIED
@@ -81,11 +72,11 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         )
     }
 
-    suspend fun saveMode(mode: VpnMode): Unit = withContext(Dispatchers.IO) {
+    override suspend fun saveMode(mode: VpnMode): Unit = withContext(Dispatchers.IO) {
         dataStore.edit { it[KEY_MODE] = mode.name }
     }
 
-    suspend fun saveGuardWire(config: VpnServerConfig): Unit = withContext(Dispatchers.IO) {
+    override suspend fun saveGuardWire(config: VpnServerConfig): Unit = withContext(Dispatchers.IO) {
         dataStore.edit {
             it[KEY_HOST] = config.host
             it[KEY_PORT] = config.port
@@ -93,15 +84,15 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         }
     }
 
-    suspend fun saveWireGuardConfig(config: String): Unit = withContext(Dispatchers.IO) {
+    override suspend fun saveWireGuardConfig(config: String): Unit = withContext(Dispatchers.IO) {
         dataStore.edit { it[KEY_WG_CONFIG] = cipher.encrypt(config) }
     }
 
-    suspend fun clearWireGuardConfig(): Unit = withContext(Dispatchers.IO) {
+    override suspend fun clearWireGuardConfig(): Unit = withContext(Dispatchers.IO) {
         dataStore.edit { it.remove(KEY_WG_CONFIG) }
     }
 
-    suspend fun saveAuth(
+    override suspend fun saveAuth(
         token: String,
         username: String,
         expiresAtEpochSeconds: Long,
@@ -115,7 +106,7 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         }
     }
 
-    suspend fun clearAuth(): Unit = withContext(Dispatchers.IO) {
+    override suspend fun clearAuth(): Unit = withContext(Dispatchers.IO) {
         dataStore.edit {
             it.remove(KEY_AUTH_TOKEN)
             it.remove(KEY_AUTH_USER)

@@ -12,8 +12,8 @@
 - Kotlin 2.2.10, AGP 9.2.1, Gradle 9.4.1, JDK 17.
 - Compose (BOM 2026.02.01), Orbit 12.0.1, WireGuard 1.0.20260102, Hilt 2.60.1 + KSP.
 - `compileSdk 37`, `targetSdk 36`, `minSdk 24`.
-- Модули: `:app`, `:feature:vpn`, `:core:vpn`, `:core:protocol`, `:core:model`.
-- `:core:model` и `:core:protocol` — чистый Kotlin/JVM, без Android API.
+- Модули: `:app`, `:feature:vpn`, `:core:domain`, `:core:data`, `:core:vpn`, `:core:protocol`, `:core:model`.
+- `:core:model`, `:core:protocol` и `:core:domain` — чистый Kotlin/JVM, без Android API.
 
 ## Команды
 
@@ -26,11 +26,15 @@
 
 ## Архитектура
 
-- Направление зависимостей: `app → feature:vpn → core:vpn → core:protocol → core:model`.
+- Направление зависимостей: `app → feature:vpn → core:domain → core:model`;
+  `core:data → core:domain`; `core:vpn → core:domain, core:protocol → core:model`.
+- `core:domain` — только Kotlin-контракты и доменные модели, без Android API.
+- `core:data` — DataStore/Keystore, auth-клиент и реализации store-контрактов.
+- `core:vpn` — только платформа: `VpnService`, TUN, WireGuard, уведомления.
 - Не протаскивай Android/Compose/`VpnService` в нижние слои и не ломай направление зависимостей.
 - Поток состояния: `GuardWireVpnService` / `WireGuardController` → Hilt `VpnStateStore` → `VpnController.state` → `VpnViewModel` → Compose.
 - Permission-диалоги, snackbar и навигационные события — только через `VpnSideEffect`.
-- Compose-экран должен оставаться stateless; бизнес-логика и валидация — в `VpnViewModel`.
+- UI зависит от контрактов (`VpnSession`, `AuthService`, `VpnSettingsStore`), Hilt связывает их через `@Binds`; Compose stateless, логика в ViewModel.
 - Новые модули/фичи подключай через `settings.gradle.kts` и `gradle/libs.versions.toml`.
 
 ## Инварианты

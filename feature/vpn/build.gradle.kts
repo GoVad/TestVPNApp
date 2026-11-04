@@ -27,7 +27,7 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
-    implementation(project(":core:vpn"))
+    implementation(project(":core:domain"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

@@ -5,8 +5,15 @@ import com.haruchka.testvpnapp.core.model.VpnLogEntry
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 
+/** Этап инициализации приложения до показа логина/основного экрана. */
+enum class StartupState {
+    CHECKING,
+    READY,
+}
+
 /** Состояние экрана VPN. */
 data class VpnUiState(
+    val startupState: StartupState = StartupState.CHECKING,
     val isLoading: Boolean = true,
     val isLoggedIn: Boolean = false,
     val username: String = "",

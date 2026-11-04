@@ -1,5 +1,6 @@
-package com.haruchka.testvpnapp.core.vpn
+package com.haruchka.testvpnapp.core.data
 
+import com.haruchka.testvpnapp.core.domain.VpnStateRepository
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
@@ -19,12 +20,12 @@ import javax.inject.Singleton
  * и UI читают.
  */
 @Singleton
-class VpnStateStore @Inject constructor() {
+class VpnStateStore @Inject constructor() : VpnStateRepository {
 
     private val _state = MutableStateFlow(VpnRuntimeState())
-    val state: StateFlow<VpnRuntimeState> = _state.asStateFlow()
+    override val state: StateFlow<VpnRuntimeState> = _state.asStateFlow()
 
-    internal fun markConnecting(mode: VpnMode, server: VpnServerConfig? = null) {
+    override fun markConnecting(mode: VpnMode, server: VpnServerConfig?) {
         _state.update {
             VpnRuntimeState(
                 connection = VpnConnectionState.Connecting,
@@ -34,10 +35,10 @@ class VpnStateStore @Inject constructor() {
         }
     }
 
-    internal fun markConnected(
+    override fun markConnected(
         mode: VpnMode,
         sinceEpochMillis: Long,
-        server: VpnServerConfig? = null,
+        server: VpnServerConfig?,
     ) {
         _state.update {
             it.copy(
@@ -48,11 +49,11 @@ class VpnStateStore @Inject constructor() {
         }
     }
 
-    internal fun updateStats(stats: VpnTrafficStats) {
+    override fun updateStats(stats: VpnTrafficStats) {
         _state.update { it.copy(stats = stats) }
     }
 
-    internal fun markDisconnecting() {
+    override fun markDisconnecting() {
         _state.update { current ->
             if (current.connection == VpnConnectionState.Disconnected) {
                 current
@@ -62,11 +63,11 @@ class VpnStateStore @Inject constructor() {
         }
     }
 
-    internal fun markDisconnected() {
+    override fun markDisconnected() {
         _state.value = VpnRuntimeState()
     }
 
-    internal fun markFailed(reason: String) {
+    override fun markFailed(reason: String) {
         _state.update {
             it.copy(connection = VpnConnectionState.Failed(reason))
         }

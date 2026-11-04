@@ -1,5 +1,8 @@
-package com.haruchka.testvpnapp.core.vpn
+package com.haruchka.testvpnapp.core.data
 
+import com.haruchka.testvpnapp.core.domain.AuthService
+import com.haruchka.testvpnapp.core.domain.AuthSession
+import com.haruchka.testvpnapp.core.domain.WireGuardProfileParser
 import com.wireguard.crypto.KeyPair
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,14 +11,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
-
-/** Результат успешного входа в auth/control-plane. */
-data class AuthSession(
-    val token: String,
-    val username: String,
-    val expiresAtEpochSeconds: Long,
-    val wireGuardConfig: String?,
-)
 
 /** Ошибка авторизации или связи с control plane. */
 class AuthException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -28,9 +23,11 @@ class AuthException(message: String, cause: Throwable? = null) : Exception(messa
  * которых собирается конфиг с приватным ключом, сгенерированным на устройстве.
  */
 @Singleton
-class AuthRepository @Inject constructor() {
+class AuthRepository @Inject constructor(
+    private val profileParser: WireGuardProfileParser,
+) : AuthService {
 
-    suspend fun login(
+    override suspend fun login(
         baseUrl: String,
         username: String,
         password: String,
@@ -120,7 +117,7 @@ class AuthRepository @Inject constructor() {
         }
 
         // Не даём сохранить IPv6-конфиг, даже если сервер ошибся.
-        WireGuardConfigParser.profile(config)
+        profileParser.profile(config)
         return config
     }
 

@@ -13,6 +13,8 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import com.haruchka.testvpnapp.core.domain.VpnLogRepository
+import com.haruchka.testvpnapp.core.domain.VpnStateRepository
 import com.haruchka.testvpnapp.core.model.VpnMode
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -45,10 +47,10 @@ class GuardWireVpnService : VpnService() {
     private val lifecycleLock = Any()
 
     @Inject
-    lateinit var stateStore: VpnStateStore
+    lateinit var stateStore: VpnStateRepository
 
     @Inject
-    lateinit var logStore: VpnLogStore
+    lateinit var logStore: VpnLogRepository
 
     @Volatile
     private var stopping = false

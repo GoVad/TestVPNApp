@@ -1,15 +1,13 @@
 package com.haruchka.testvpnapp.core.vpn
 
+import com.haruchka.testvpnapp.core.domain.WireGuardProfile
+import com.haruchka.testvpnapp.core.domain.WireGuardProfileParser
 import com.wireguard.config.Config
+import javax.inject.Inject
+import javax.inject.Singleton
 import java.io.BufferedReader
 import java.io.StringReader
 import java.net.Inet6Address
-
-/** Краткая информация о WireGuard-профиле для UI. Без приватного ключа. */
-data class WireGuardProfile(
-    val addresses: String,
-    val endpoint: String,
-)
 
 /**
  * Разбор и проверка WireGuard-конфига.
@@ -17,7 +15,8 @@ data class WireGuardProfile(
  * IPv6 намеренно запрещён: приложение работает только с IPv4, чтобы не было
  * утечек в сеть оператора.
  */
-object WireGuardConfigParser {
+@Singleton
+class WireGuardConfigParser @Inject constructor() : WireGuardProfileParser {
 
     fun parse(text: String): Config {
         if (text.isBlank()) throw WireGuardConfigException("Конфиг WireGuard пуст")
@@ -31,8 +30,8 @@ object WireGuardConfigParser {
         return config
     }
 
-    fun profile(text: String): WireGuardProfile {
-        val config = parse(text)
+    override fun profile(configText: String): WireGuardProfile {
+        val config = parse(configText)
         val addresses = config.getInterface().addresses
             .joinToString(", ") { it.toString() }
             .ifBlank { "—" }

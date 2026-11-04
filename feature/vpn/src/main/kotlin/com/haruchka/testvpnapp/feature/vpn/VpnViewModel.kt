@@ -3,6 +3,7 @@ package com.haruchka.testvpnapp.feature.vpn
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.VpnService
 import android.os.Build
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,11 +13,11 @@ import androidx.lifecycle.ViewModel
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
-import com.haruchka.testvpnapp.core.vpn.AuthRepository
-import com.haruchka.testvpnapp.core.vpn.VpnController
-import com.haruchka.testvpnapp.core.vpn.VpnLogStore
-import com.haruchka.testvpnapp.core.vpn.VpnSettingsRepository
-import com.haruchka.testvpnapp.core.vpn.WireGuardConfigParser
+import com.haruchka.testvpnapp.core.domain.AuthService
+import com.haruchka.testvpnapp.core.domain.VpnLogRepository
+import com.haruchka.testvpnapp.core.domain.VpnSession
+import com.haruchka.testvpnapp.core.domain.VpnSettingsStore
+import com.haruchka.testvpnapp.core.domain.WireGuardProfileParser
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -31,10 +32,11 @@ import org.orbitmvi.orbit.viewmodel.orbitContainer
  */
 @HiltViewModel
 class VpnViewModel @Inject constructor(
-    private val controller: VpnController,
-    private val settingsRepository: VpnSettingsRepository,
-    private val authRepository: AuthRepository,
-    private val logStore: VpnLogStore,
+    private val controller: VpnSession,
+    private val settingsRepository: VpnSettingsStore,
+    private val authRepository: AuthService,
+    private val profileParser: WireGuardProfileParser,
+    private val logStore: VpnLogRepository,
     @param:ApplicationContext private val appContext: Context,
 ) : ViewModel(), OrbitContainerHost<VpnUiState, VpnUiState, VpnSideEffect> {
     private var wireGuardConfig: String? = null
@@ -49,7 +51,7 @@ class VpnViewModel @Inject constructor(
             if (stored != null) {
                 wireGuardConfig = stored.wireGuardConfig
                 val profile = stored.wireGuardConfig?.let {
-                    runCatching { WireGuardConfigParser.profile(it) }.getOrNull()
+                    runCatching { profileParser.profile(it) }.getOrNull()
                 }
                 val nowSeconds = System.currentTimeMillis() / 1_000L
                 val authValid = stored.authToken != null && stored.authExpiresAt > nowSeconds
@@ -74,7 +76,7 @@ class VpnViewModel @Inject constructor(
 
             logStore.append("Готов к подключению")
 
-            reduce { state.copy(isLoading = false) }
+            reduce { state.copy(isLoading = false, startupState = StartupState.READY) }
 
             coroutineScope {
                 launch {
@@ -172,7 +174,7 @@ class VpnViewModel @Inject constructor(
                 runCatching { settingsRepository.saveWireGuardConfig(provisionedConfig) }
             }
             val profile = wireGuardConfig?.let {
-                runCatching { WireGuardConfigParser.profile(it) }.getOrNull()
+                runCatching { profileParser.profile(it) }.getOrNull()
             }
             reduce {
                 state.copy(
@@ -260,7 +262,7 @@ class VpnViewModel @Inject constructor(
 
     fun onWireGuardConfigSaved(configText: String) = intent {
         val profile = try {
-            WireGuardConfigParser.profile(configText)
+            profileParser.profile(configText)
         } catch (e: Exception) {
             val message = e.message ?: "Некорректный WireGuard-конфиг"
             reduce { state.copy(inputError = message) }
@@ -345,7 +347,7 @@ class VpnViewModel @Inject constructor(
     }
 
     private suspend fun Syntax<VpnUiState, VpnSideEffect>.requestVpnConsent() {
-        val consentIntent = controller.createPermissionIntent()
+        val consentIntent = VpnService.prepare(appContext)
         if (consentIntent == null) {
             startTunnel()
         } else {

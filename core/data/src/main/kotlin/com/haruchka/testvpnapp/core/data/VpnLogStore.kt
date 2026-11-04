@@ -1,5 +1,6 @@
-package com.haruchka.testvpnapp.core.vpn
+package com.haruchka.testvpnapp.core.data
 
+import com.haruchka.testvpnapp.core.domain.VpnLogRepository
 import com.haruchka.testvpnapp.core.model.VpnLogEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,12 +16,12 @@ import javax.inject.Singleton
  * Не логируем токены, приватные ключи и содержимое трафика.
  */
 @Singleton
-class VpnLogStore @Inject constructor() {
+class VpnLogStore @Inject constructor() : VpnLogRepository {
 
     private val _logs = MutableStateFlow<List<VpnLogEntry>>(emptyList())
-    val logs: StateFlow<List<VpnLogEntry>> = _logs.asStateFlow()
+    override val logs: StateFlow<List<VpnLogEntry>> = _logs.asStateFlow()
 
-    fun append(message: String) {
+    override fun append(message: String) {
         val entry = VpnLogEntry(
             timestampMillis = System.currentTimeMillis(),
             message = message,
@@ -28,7 +29,7 @@ class VpnLogStore @Inject constructor() {
         _logs.update { current -> (current + entry).takeLast(MAX_ENTRIES) }
     }
 
-    fun clear() {
+    override fun clear() {
         _logs.value = emptyList()
     }
 

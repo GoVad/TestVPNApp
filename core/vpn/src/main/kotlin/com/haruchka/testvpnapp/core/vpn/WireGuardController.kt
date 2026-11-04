@@ -4,6 +4,9 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.haruchka.testvpnapp.core.domain.VpnLogRepository
+import com.haruchka.testvpnapp.core.domain.VpnStateRepository
+import com.haruchka.testvpnapp.core.domain.WireGuardEngine
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnTrafficStats
@@ -27,9 +30,10 @@ import kotlinx.coroutines.launch
 @Singleton
 class WireGuardController @Inject constructor(
     @ApplicationContext context: Context,
-    private val stateStore: VpnStateStore,
-    private val logStore: VpnLogStore,
-) {
+    private val stateStore: VpnStateRepository,
+    private val logStore: VpnLogRepository,
+    private val configParser: WireGuardConfigParser,
+) : WireGuardEngine {
 
     private val appContext = context.applicationContext
     private val backend = GoBackend(appContext)
@@ -46,9 +50,9 @@ class WireGuardController @Inject constructor(
         WireGuardSessionBridge.disconnect = { disconnect() }
     }
 
-    fun connect(configText: String) {
+    override fun connect(configText: String) {
         val config = try {
-            WireGuardConfigParser.parse(configText)
+            configParser.parse(configText)
         } catch (e: Exception) {
             val message = e.message ?: "Некорректный WireGuard-конфиг"
             stateStore.markFailed(message)
@@ -95,7 +99,7 @@ class WireGuardController @Inject constructor(
         }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         val tunnel = activeTunnel
         stopping = true
         stateStore.markDisconnecting()

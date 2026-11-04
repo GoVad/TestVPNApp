@@ -452,7 +452,7 @@ private fun WireGuardCard(
             }
 
             Text(
-                text = "IPv6 отключён: конфиг с IPv6-адресами, DNS или AllowedIPs будет отклонён.",
+                text = "IPv6 отключён: конфиг с IPv6-адресами, DNS, AllowedIPs или endpoint будет отклонён.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -609,9 +609,10 @@ private fun EndpointCard(
             }
 
             Text(
-                text = "Токен — общий PSK для аутентификации handshake. Он не " +
-                    "передаётся по сети. Хост 10.0.2.2 из эмулятора указывает " +
-                    "на компьютер с GuardWire-сервером.",
+                text = "Сессионный токен используется как PSK в GuardWire handshake; " +
+                    "в самом handshake он не передаётся. Логин и токен сейчас идут " +
+                    "по HTTP без TLS — только для теста. Хост 10.0.2.2 из эмулятора " +
+                    "указывает на компьютер с GuardWire-сервером.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -820,8 +821,8 @@ private fun AboutCard(mode: VpnMode) {
                 }
             }
             Text(
-                text = "Клиент не делает NAT/tun2socks: интернет появится только с сервером, " +
-                    "который маршрутизирует пакеты (guardwire-linux-server.py или WireGuard-сервер).",
+                text = "NAT выполняет сервер: guardwire-linux-server.py или WireGuard-сервер. " +
+                    "Клиент только маршрутизирует пакеты в TUN и не делает tun2socks.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
