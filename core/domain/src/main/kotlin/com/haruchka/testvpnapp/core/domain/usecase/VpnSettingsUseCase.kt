@@ -16,4 +16,7 @@ class VpnSettingsUseCase(
 
     suspend fun clearWireGuard(): Result<Unit> =
         runCatching { settings.clearWireGuardConfig() }
+
+    suspend fun clearAuth(): Result<Unit> =
+        runCatching { settings.clearAuth() }
 }

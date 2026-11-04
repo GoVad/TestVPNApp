@@ -68,9 +68,11 @@ class LoadVpnSettingsUseCaseTest {
         override suspend fun clearWireGuardConfig() = Unit
 
         override suspend fun saveAuth(
-            token: String,
+            accessToken: String,
+            refreshToken: String,
             username: String,
-            expiresAtEpochSeconds: Long,
+            accessExpiresAtEpochSeconds: Long,
+            refreshExpiresAtEpochSeconds: Long,
             baseUrl: String,
         ) = Unit
 

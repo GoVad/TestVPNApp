@@ -19,7 +19,7 @@
 
 - Сборка/тесты/lint: `./gradlew :app:assembleDebug :core:domain:test :core:protocol:test :app:lintDebug`
 - Установка: `adb install -r app/build/outputs/apk/debug/app-debug.apk`
-- Auth: `python3 tools/guardwire-auth-server.py --port 8090 --user demo:demo --disable-wireguard` (для WireGuard — sudo + `--wg-interface wg0`).
+- Auth: `python3 tools/guardwire-auth-server.py --port 8090 --user demo:demo --disable-wireguard` (для WireGuard — sudo + `--wg-interface wg0`). Access TTL 15 мин, refresh TTL 30 дней; logout отзывает сессию и peer.
 - Демо-сервер без NAT: `python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo`
 - Полный сервер с TUN+NAT (Linux, root): `sudo python3 tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo`
 - Python: `./tools/setup-python.sh` (venv + cryptography); WireGuard: `sudo ./tools/wireguard-server-setup.sh`.
@@ -33,6 +33,8 @@
 - `core:vpn` — только платформа: `VpnService`, TUN, WireGuard, уведомления.
 - Не протаскивай Android/Compose/`VpnService` в нижние слои и не ломай направление зависимостей.
 - Поток состояния: `GuardWireVpnService` / `WireGuardController` → Hilt `VpnStateStore` → `VpnConnectionUseCase.observeState()` → `VpnViewModel` → Compose.
+- `GuardWireVpnService` переподключается при смене/потере сети (backoff 1–16 с) и поддерживает системный always-on через action `android.net.VpnService`.
+- Access-токен короткий, refresh — длинный; `EnsureAuthSessionUseCase` продлевает сессию до подключения.
 - Permission-диалоги, snackbar и навигационные события — только через `VpnSideEffect`.
 - UI зависит от контрактов (`VpnSession`, `AuthService`, `VpnSettingsStore`) и use case-ов, Hilt связывает реализации через `@Binds`; Compose stateless, логика в ViewModel.
 - `VpnViewModel` не вызывает store/repository/service напрямую: только use case-и из `core:domain/usecase`.

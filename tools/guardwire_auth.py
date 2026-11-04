@@ -53,23 +53,54 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def write_token_file(path: str | Path, token: str, username: str, expires_at: float) -> None:
+def new_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def token_digest(token: str) -> str:
+    """Храним только SHA-256 refresh-токена, как пароль."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def write_json_file(path: str | Path, payload: dict) -> None:
     file_path = Path(path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "token": token,
-        "username": username,
-        "expires_at": expires_at,
-    }
-    fd, temp_name = tempfile.mkstemp(prefix=".guardwire-token.", dir=str(file_path.parent))
+    fd, temp_name = tempfile.mkstemp(prefix=f".{file_path.name}.", dir=str(file_path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
-            json.dump(payload, file)
+            json.dump(payload, file, ensure_ascii=False, indent=2)
         os.chmod(temp_name, 0o600)
         os.replace(temp_name, file_path)
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def load_json_file(path: str | Path, default: dict) -> dict:
+    try:
+        with open(path, encoding="utf-8") as file:
+            payload = json.load(file)
+        return payload if isinstance(payload, dict) else default
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+def write_token_file(path: str | Path, token: str, username: str, expires_at: float) -> None:
+    write_json_file(
+        path,
+        {
+            "token": token,
+            "username": username,
+            "expires_at": expires_at,
+        },
+    )
+
+
+def clear_token_file(path: str | Path) -> None:
+    try:
+        Path(path).unlink()
+    except OSError:
+        pass
 
 
 def load_token_record(path: str | Path) -> dict | None:

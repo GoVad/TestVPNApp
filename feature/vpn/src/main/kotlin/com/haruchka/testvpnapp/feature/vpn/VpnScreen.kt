@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -82,15 +81,14 @@ fun VpnScreen(
     onShowLogs: () -> Unit,
     onLogout: () -> Unit,
     username: String,
-    onWireGuardConfigSaved: (String) -> Unit,
+    onWireGuardConfigRequested: () -> Unit,
     onWireGuardConfigCleared: () -> Unit,
     onHostChange: (String) -> Unit,
     onPortChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
+    onOpenVpnSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showWireGuardDialog by remember { mutableStateOf(false) }
-
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
@@ -128,7 +126,7 @@ fun VpnScreen(
             VpnMode.REAL -> item {
                 WireGuardCard(
                     state = state,
-                    onPasteConfig = { showWireGuardDialog = true },
+                    onRequestConfig = onWireGuardConfigRequested,
                     onClearConfig = onWireGuardConfigCleared,
                 )
             }
@@ -137,6 +135,7 @@ fun VpnScreen(
             item { TrafficCard(state) }
         }
         item { LogCard(state.logs) }
+        item { AlwaysOnCard(onOpenSettings = onOpenVpnSettings) }
         item { AboutCard(mode = state.mode) }
         item {
             Text(
@@ -149,15 +148,6 @@ fun VpnScreen(
         }
     }
 
-    if (showWireGuardDialog) {
-        WireGuardConfigDialog(
-            onDismiss = { showWireGuardDialog = false },
-            onSave = {
-                showWireGuardDialog = false
-                onWireGuardConfigSaved(it)
-            },
-        )
-    }
 }
 
 @Composable
@@ -391,7 +381,7 @@ private fun PowerGlyph(
 @Composable
 private fun WireGuardCard(
     state: VpnUiState,
-    onPasteConfig: () -> Unit,
+    onRequestConfig: () -> Unit,
     onClearConfig: () -> Unit,
 ) {
     Card(
@@ -412,7 +402,8 @@ private fun WireGuardCard(
 
             if (state.hasWireGuardConfig) {
                 Text(
-                    text = "Конфиг сохранён в зашифрованном DataStore. Приватный ключ не показывается.",
+                    text = "Профиль выдан сервером и сохранён в зашифрованном DataStore. " +
+                        "Приватный ключ не показывается.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -423,32 +414,54 @@ private fun WireGuardCard(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(
-                        onClick = onPasteConfig,
-                        enabled = state.fieldsEnabled,
+                        onClick = onRequestConfig,
+                        enabled = state.fieldsEnabled && !state.isProvisioningWireGuard,
                     ) {
-                        Text("Заменить")
+                        Text("Обновить")
                     }
                     TextButton(
                         onClick = onClearConfig,
-                        enabled = state.fieldsEnabled,
+                        enabled = state.fieldsEnabled && !state.isProvisioningWireGuard,
                     ) {
                         Text("Удалить")
                     }
                 }
             } else {
                 Text(
-                    text = "Вставьте текст .conf из WireGuard. Приватный ключ будет " +
-                        "зашифрован ключом Android Keystore.",
+                    text = "Профиль выдаётся сервером автоматически после входа. " +
+                        "Вставлять .conf вручную не нужно.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(
-                    onClick = onPasteConfig,
-                    enabled = state.fieldsEnabled,
+                    onClick = onRequestConfig,
+                    enabled = state.fieldsEnabled && !state.isProvisioningWireGuard,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Вставить конфиг")
+                    if (state.isProvisioningWireGuard) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(
+                        if (state.isProvisioningWireGuard) {
+                            "Получаем профиль…"
+                        } else {
+                            "Получить профиль"
+                        },
+                    )
                 }
+            }
+
+            state.inputError?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Text(
@@ -479,51 +492,6 @@ private fun ProfileRow(label: String, value: String) {
 }
 
 @Composable
-private fun WireGuardConfigDialog(
-    onDismiss: () -> Unit,
-    onSave: (String) -> Unit,
-) {
-    var text by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("WireGuard-конфиг") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Вставьте содержимое .conf. После сохранения приватный ключ " +
-                        "не будет отображаться.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    minLines = 8,
-                    maxLines = 14,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(text.trim()) },
-                enabled = text.isNotBlank(),
-            ) {
-                Text("Сохранить")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
-            }
-        },
-    )
-}
-
-@Composable
 private fun EndpointCard(
     state: VpnUiState,
     onHostChange: (String) -> Unit,
@@ -531,6 +499,7 @@ private fun EndpointCard(
     onTokenChange: (String) -> Unit,
 ) {
     var tokenVisible by remember { mutableStateOf(false) }
+    val canEditToken = state.fieldsEnabled && !state.isLoggedIn
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -576,25 +545,31 @@ private fun EndpointCard(
                 OutlinedTextField(
                     value = state.token,
                     onValueChange = onTokenChange,
-                    label = { Text("PSK-токен") },
+                    label = {
+                        Text(if (state.isLoggedIn) "PSK из сессии" else "PSK-токен")
+                    },
                     placeholder = { Text("demo") },
                     singleLine = true,
-                    enabled = state.fieldsEnabled,
-                    visualTransformation = if (tokenVisible) {
+                    enabled = canEditToken,
+                    visualTransformation = if (tokenVisible && canEditToken) {
                         VisualTransformation.None
                     } else {
                         PasswordVisualTransformation()
                     },
-                    trailingIcon = {
-                        TextButton(
-                            onClick = { tokenVisible = !tokenVisible },
-                            contentPadding = PaddingValues(horizontal = 4.dp),
-                        ) {
-                            Text(
-                                text = if (tokenVisible) "Скрыть" else "Показать",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                    trailingIcon = if (canEditToken) {
+                        {
+                            TextButton(
+                                onClick = { tokenVisible = !tokenVisible },
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                            ) {
+                                Text(
+                                    text = if (tokenVisible) "Скрыть" else "Показать",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
                         }
+                    } else {
+                        null
                     },
                     modifier = Modifier.weight(1.7f),
                 )
@@ -609,10 +584,14 @@ private fun EndpointCard(
             }
 
             Text(
-                text = "Сессионный токен используется как PSK в GuardWire handshake; " +
-                    "в самом handshake он не передаётся. Логин и токен сейчас идут " +
-                    "по HTTP без TLS — только для теста. Хост 10.0.2.2 из эмулятора " +
-                    "указывает на компьютер с GuardWire-сервером.",
+                text = if (state.isLoggedIn) {
+                    "PSK выдаётся сервером после входа и хранится зашифрованным " +
+                        "в Android Keystore. Показать его нельзя."
+                } else {
+                    "Сессионный токен используется как PSK в GuardWire handshake; " +
+                        "в самом handshake он не передаётся. Хост 10.0.2.2 из эмулятора " +
+                        "указывает на компьютер с GuardWire-сервером."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -776,6 +755,37 @@ private fun LogCard(logs: List<VpnLogEntry>) {
 }
 
 @Composable
+private fun AlwaysOnCard(onOpenSettings: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Always-on VPN",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Android может поднимать GuardWire автоматически после " +
+                    "перезагрузки и при смене сети. Включите always-on в системных " +
+                    "настройках VPN и выберите GuardWire (упрощённый режим).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onOpenSettings) {
+                Text("Открыть настройки VPN")
+            }
+        }
+    }
+}
+
+@Composable
 private fun AboutCard(mode: VpnMode) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -921,11 +931,12 @@ private fun VpnScreenConnectedPreview() {
             onShowLogs = {},
             onLogout = {},
             username = "demo",
-            onWireGuardConfigSaved = {},
+            onWireGuardConfigRequested = {},
             onWireGuardConfigCleared = {},
             onHostChange = {},
             onPortChange = {},
             onTokenChange = {},
+            onOpenVpnSettings = {},
         )
     }
 }

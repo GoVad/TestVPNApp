@@ -7,6 +7,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -14,7 +18,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.haruchka.testvpnapp.core.domain.VpnLogRepository
+import com.haruchka.testvpnapp.core.domain.VpnSettingsStore
 import com.haruchka.testvpnapp.core.domain.VpnStateRepository
+import com.haruchka.testvpnapp.core.domain.usecase.EnsureAuthSessionUseCase
 import com.haruchka.testvpnapp.core.model.VpnMode
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -29,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
@@ -39,6 +46,10 @@ import kotlinx.coroutines.launch
  * [VpnService.Builder], устанавливает GuardWire-соединение и запускает
  * [GuardWireTunnel]. Сокет туннеля обязательно проходит через [protect],
  * иначе его пакеты попадут в собственный TUN.
+ *
+ * Сервис также поддерживает системный always-on: Android запускает его с
+ * action [VpnService.SERVICE_INTERFACE], после чего сервис сам читает
+ * сохранённый профиль и продлевает auth-сессию.
  */
 @AndroidEntryPoint
 class GuardWireVpnService : VpnService() {
@@ -52,22 +63,45 @@ class GuardWireVpnService : VpnService() {
     @Inject
     lateinit var logStore: VpnLogRepository
 
+    @Inject
+    lateinit var settingsStore: VpnSettingsStore
+
+    @Inject
+    lateinit var ensureAuthSession: EnsureAuthSessionUseCase
+
     @Volatile
     private var stopping = false
 
     private var tunnel: GuardWireTunnel? = null
     private var connectJob: Job? = null
+    private var reconnectJob: Job? = null
+    private var serverConfig: VpnServerConfig? = null
+    private var reconnectAttempt = 0
+    private var networkLost = false
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        registerNetworkCallback()
         startForegroundCompat(getString(R.string.guardwire_notification_preparing))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_CONNECT -> handleConnect(intent)
+            ACTION_CONNECT -> {
+                val server = intent.toServerConfig()
+                if (server == null) {
+                    shutdown(reason = "Некорректные настройки GuardWire-сервера")
+                } else {
+                    handleConnect(server)
+                }
+            }
+
             ACTION_DISCONNECT -> shutdown(reason = null)
+
+            VpnService.SERVICE_INTERFACE -> handleAlwaysOn()
+
             else -> shutdown(reason = null)
         }
         return START_NOT_STICKY
@@ -79,11 +113,15 @@ class GuardWireVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        unregisterNetworkCallback()
         scope.cancel()
         connectJob?.cancel()
         connectJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
         tunnel?.close()
         tunnel = null
+        serverConfig = null
         if (!stopping) {
             stateStore.markDisconnected()
         }
@@ -91,16 +129,13 @@ class GuardWireVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun handleConnect(intent: Intent) {
+    private fun handleConnect(server: VpnServerConfig) {
         synchronized(lifecycleLock) {
-            if (connectJob?.isActive == true || tunnel != null) return
+            if (connectJob?.isActive == true || tunnel != null || reconnectJob?.isActive == true) return
             stopping = false
-        }
-
-        val server = intent.toServerConfig()
-        if (server == null) {
-            shutdown(reason = "Некорректные настройки GuardWire-сервера")
-            return
+            serverConfig = server
+            reconnectAttempt = 0
+            networkLost = false
         }
 
         logStore.append("GuardWire: подключение к ${server.endpoint}…")
@@ -108,7 +143,55 @@ class GuardWireVpnService : VpnService() {
         updateNotification(
             getString(R.string.guardwire_notification_connecting, server.endpoint),
         )
-        connectJob = scope.launch { runConnect(server) }
+        startConnect(server)
+    }
+
+    /**
+     * Always-on запускается системой без extras. Берём сохранённый GuardWire-
+     * профиль и актуальный access-токен; при необходимости продлеваем сессию.
+     */
+    private fun handleAlwaysOn() {
+        scope.launch {
+            val stored = runCatching { settingsStore.load() }.getOrNull()
+            if (stored == null) {
+                shutdown(reason = "Не удалось загрузить настройки VPN")
+                return@launch
+            }
+            if (stored.mode != VpnMode.SIMPLIFIED) {
+                shutdown(reason = "Always-on поддерживается только в упрощённом режиме")
+                return@launch
+            }
+
+            val session = ensureAuthSession().getOrNull()
+            if (session == null) {
+                shutdown(reason = "Сессия истекла, войдите заново")
+                return@launch
+            }
+
+            val config = stored.guardWire.copy(token = session.accessToken)
+            if (config.host.isBlank() || config.token.isBlank()) {
+                shutdown(reason = "Нет сохранённого GuardWire-профиля")
+                return@launch
+            }
+            handleConnect(config)
+        }
+    }
+
+    private fun startConnect(server: VpnServerConfig) {
+        connectJob = scope.launch {
+            val session = ensureAuthSession().getOrNull()
+            if (session == null && server.token.isBlank()) {
+                shutdown(reason = "Сессия истекла, войдите заново")
+                return@launch
+            }
+            val actual = if (session != null) {
+                server.copy(token = session.accessToken)
+            } else {
+                server
+            }
+            serverConfig = actual
+            runConnect(actual)
+        }
     }
 
     private suspend fun runConnect(server: VpnServerConfig) {
@@ -132,7 +215,11 @@ class GuardWireVpnService : VpnService() {
                 connection = connection,
                 keepAliveMillis = server.keepAliveSeconds.coerceAtLeast(5) * 1_000L,
                 onStats = stateStore::updateStats,
-                onFailure = { message -> shutdown(reason = message) },
+                onFailure = { message ->
+                    // Запускаем отдельную корутину: закрытие tunnel отменит
+                    // корутину, из которой пришёл onFailure.
+                    scope.launch { scheduleReconnect(message) }
+                },
             )
 
             synchronized(lifecycleLock) {
@@ -141,6 +228,8 @@ class GuardWireVpnService : VpnService() {
                     return
                 }
                 tunnel = newTunnel
+                reconnectAttempt = 0
+                networkLost = false
                 stateStore.markConnected(VpnMode.SIMPLIFIED, System.currentTimeMillis(), server)
                 logStore.append("GuardWire: туннель установлен")
                 updateNotification(
@@ -159,9 +248,89 @@ class GuardWireVpnService : VpnService() {
         } catch (e: Exception) {
             runCatching { connection?.close() }
             runCatching { descriptor?.close() }
-            shutdown(
-                reason = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось подключиться",
-            )
+            val reason = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось подключиться"
+            if (stopping) {
+                shutdown(reason = reason)
+            } else {
+                scope.launch { scheduleReconnect(reason) }
+            }
+        }
+    }
+
+    private fun scheduleReconnect(reason: String) {
+        var target: VpnServerConfig? = null
+        var delayMillis = 0L
+        var shouldStop = false
+
+        synchronized(lifecycleLock) {
+            if (stopping || serverConfig == null) return
+            if (reconnectJob?.isActive == true) return
+            if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+                shouldStop = true
+            } else {
+                reconnectAttempt++
+                delayMillis = reconnectDelayMillis(reconnectAttempt)
+                target = serverConfig
+                tunnel?.close()
+                tunnel = null
+                connectJob?.cancel()
+                connectJob = null
+            }
+        }
+
+        if (shouldStop) {
+            shutdown(reason = "Не удалось восстановить соединение: $reason")
+            return
+        }
+
+        val server = target ?: return
+        stateStore.markConnecting(VpnMode.SIMPLIFIED, server)
+        logStore.append(
+            "GuardWire: переподключение через ${delayMillis / 1_000} с — $reason",
+        )
+        updateNotification(
+            getString(R.string.guardwire_notification_connecting, server.endpoint),
+        )
+        reconnectJob = scope.launch {
+            delay(delayMillis)
+            if (stopping) return@launch
+            startConnect(server)
+        }
+    }
+
+    private fun reconnectDelayMillis(attempt: Int): Long {
+        val seconds = 1L shl (attempt - 1).coerceIn(0, 5)
+        return seconds.coerceAtMost(MAX_RECONNECT_DELAY_SECONDS) * 1_000L
+    }
+
+    private fun registerNetworkCallback() {
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onLost(network: Network) {
+                if (stopping || serverConfig == null) return
+                networkLost = true
+                scope.launch { scheduleReconnect("Сеть недоступна") }
+            }
+
+            override fun onAvailable(network: Network) {
+                if (!networkLost || stopping || serverConfig == null) return
+                networkLost = false
+                scope.launch { scheduleReconnect("Сеть восстановлена") }
+            }
+        }
+        networkCallback = callback
+        runCatching { manager.registerNetworkCallback(request, callback) }
+            .onFailure { logStore.append("GuardWire: не удалось отслеживать сеть") }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        runCatching {
+            getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
         }
     }
 
@@ -186,12 +355,14 @@ class GuardWireVpnService : VpnService() {
         synchronized(lifecycleLock) {
             if (stopping) return
             stopping = true
+            serverConfig = null
+            reconnectJob?.cancel()
+            reconnectJob = null
+            connectJob?.cancel()
+            connectJob = null
+            tunnel?.close()
+            tunnel = null
         }
-
-        connectJob?.cancel()
-        connectJob = null
-        tunnel?.close()
-        tunnel = null
 
         if (reason == null) {
             stateStore.markDisconnected()
@@ -297,6 +468,8 @@ class GuardWireVpnService : VpnService() {
         private const val NOTIFICATION_ID = 1001
         private const val REQUEST_OPEN_APP = 10
         private const val REQUEST_DISCONNECT = 11
+        private const val MAX_RECONNECT_ATTEMPTS = 5
+        private const val MAX_RECONNECT_DELAY_SECONDS = 30L
 
         private const val EXTRA_HOST = "host"
         private const val EXTRA_PORT = "port"

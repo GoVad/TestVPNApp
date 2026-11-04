@@ -14,9 +14,9 @@ data class LoginResult(
 )
 
 /**
- * Выполняет вход, сохраняет токен и выданный WireGuard-конфиг.
- *
- * Если сервер не прислал новый конфиг, используется ранее сохранённый.
+ * Выполняет вход, сохраняет access/refresh-токены и выданный
+ * WireGuard-конфиг. Если сервер не прислал новый конфиг, используется
+ * ранее сохранённый.
  */
 class LoginUseCase(
     private val authService: AuthService,
@@ -38,16 +38,24 @@ class LoginUseCase(
         val existingConfig = runCatching { settings.load().wireGuardConfig }.getOrNull()
         val config = session.wireGuardConfig ?: existingConfig
 
-        runCatching {
+        try {
             settings.saveAuth(
-                token = session.token,
+                accessToken = session.accessToken,
+                refreshToken = session.refreshToken,
                 username = session.username,
-                expiresAtEpochSeconds = session.expiresAtEpochSeconds,
+                accessExpiresAtEpochSeconds = session.accessExpiresAtEpochSeconds,
+                refreshExpiresAtEpochSeconds = session.refreshExpiresAtEpochSeconds,
                 baseUrl = server,
             )
+        } catch (error: Exception) {
+            throw IllegalStateException("Не удалось сохранить сессию", error)
         }
         if (session.wireGuardConfig != null) {
-            runCatching { settings.saveWireGuardConfig(session.wireGuardConfig) }
+            try {
+                settings.saveWireGuardConfig(session.wireGuardConfig)
+            } catch (error: Exception) {
+                throw IllegalStateException("Не удалось сохранить WireGuard-конфиг", error)
+            }
         }
 
         val profile = config?.let {

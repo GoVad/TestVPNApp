@@ -5,10 +5,11 @@ import com.haruchka.testvpnapp.core.domain.VpnLogRepository
 import com.haruchka.testvpnapp.core.domain.VpnSession
 import com.haruchka.testvpnapp.core.domain.VpnSettingsStore
 import com.haruchka.testvpnapp.core.domain.WireGuardProfileParser
+import com.haruchka.testvpnapp.core.domain.usecase.EnsureAuthSessionUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoadVpnSettingsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoginUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LogoutUseCase
-import com.haruchka.testvpnapp.core.domain.usecase.SaveWireGuardConfigUseCase
+import com.haruchka.testvpnapp.core.domain.usecase.ProvisionWireGuardUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.ValidateGuardWireConfigUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnConnectionUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnLogsUseCase
@@ -42,10 +43,17 @@ object VpnUseCaseModule {
     ): LoginUseCase = LoginUseCase(authService, settings, profileParser)
 
     @Provides
+    fun provideEnsureAuthSessionUseCase(
+        settings: VpnSettingsStore,
+        authService: AuthService,
+    ): EnsureAuthSessionUseCase = EnsureAuthSessionUseCase(settings, authService)
+
+    @Provides
     fun provideLogoutUseCase(
         session: VpnSession,
         settings: VpnSettingsStore,
-    ): LogoutUseCase = LogoutUseCase(session, settings)
+        authService: AuthService,
+    ): LogoutUseCase = LogoutUseCase(session, settings, authService)
 
     @Provides
     fun provideVpnConnectionUseCase(
@@ -57,10 +65,15 @@ object VpnUseCaseModule {
         ValidateGuardWireConfigUseCase()
 
     @Provides
-    fun provideSaveWireGuardConfigUseCase(
+    fun provideProvisionWireGuardUseCase(
+        authService: AuthService,
         settings: VpnSettingsStore,
         profileParser: WireGuardProfileParser,
-    ): SaveWireGuardConfigUseCase = SaveWireGuardConfigUseCase(settings, profileParser)
+    ): ProvisionWireGuardUseCase = ProvisionWireGuardUseCase(
+        authService = authService,
+        settings = settings,
+        profileParser = profileParser,
+    )
 
     @Provides
     fun provideVpnSettingsUseCase(

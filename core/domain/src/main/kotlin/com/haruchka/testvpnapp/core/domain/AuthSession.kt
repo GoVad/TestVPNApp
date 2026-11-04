@@ -1,9 +1,14 @@
 package com.haruchka.testvpnapp.core.domain
 
-/** Результат успешного входа в auth/control-plane. */
+/** Результат успешного входа или продления сессии. */
 data class AuthSession(
-    val token: String,
+    val accessToken: String,
+    val refreshToken: String,
     val username: String,
-    val expiresAtEpochSeconds: Long,
+    val accessExpiresAtEpochSeconds: Long,
+    val refreshExpiresAtEpochSeconds: Long,
     val wireGuardConfig: String?,
 )
+
+/** Refresh-токен истёк или отозван: нужен повторный вход. */
+class AuthSessionExpiredException : Exception("Сессия истекла, войдите заново")

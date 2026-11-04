@@ -15,8 +15,10 @@ data class LoadedVpnSettings(
     val authToken: String?,
     val authUsername: String?,
     val authExpiresAtEpochSeconds: Long,
+    val authRefreshExpiresAtEpochSeconds: Long,
     val authBaseUrl: String,
     val isAuthValid: Boolean,
+    val isRefreshValid: Boolean,
 )
 
 /**
@@ -34,6 +36,7 @@ class LoadVpnSettingsUseCase(
         }
         val nowSeconds = System.currentTimeMillis() / 1_000L
         val authValid = stored.authToken != null && stored.authExpiresAt > nowSeconds
+        val refreshValid = stored.authRefreshToken != null && stored.authRefreshExpiresAt > nowSeconds
 
         LoadedVpnSettings(
             mode = stored.mode,
@@ -43,8 +46,10 @@ class LoadVpnSettingsUseCase(
             authToken = stored.authToken,
             authUsername = stored.authUsername,
             authExpiresAtEpochSeconds = stored.authExpiresAt,
+            authRefreshExpiresAtEpochSeconds = stored.authRefreshExpiresAt,
             authBaseUrl = stored.authBaseUrl,
             isAuthValid = authValid,
+            isRefreshValid = refreshValid,
         )
     }
 }

@@ -271,8 +271,9 @@ VpnScreen (stateless Compose)
 | Use case | Что делает |
 |----------|------------|
 | `LoadVpnSettingsUseCase` | читает настройки, проверяет срок токена, разбирает WireGuard-профиль |
-| `LoginUseCase` | логин, сохранение токена и WireGuard-конфига, выбор актуального профиля |
-| `LogoutUseCase` | отключение туннеля и очистка auth/WireGuard-данных |
+| `LoginUseCase` | логин, сохранение access/refresh и WireGuard-конфига |
+| `EnsureAuthSessionUseCase` | продление access через refresh до истечения сессии |
+| `LogoutUseCase` | отзыв refresh на сервере, отключение и очистка локальных секретов |
 | `VpnConnectionUseCase` | подключение в обоих режимах, отключение, наблюдение за состоянием |
 | `ValidateGuardWireConfigUseCase` | проверка host/port/PSK и сборка `VpnServerConfig` |
 | `SaveWireGuardConfigUseCase` | проверка конфига, построение профиля и сохранение |
@@ -308,9 +309,9 @@ MainActivity
   → VpnViewModel.startupState = CHECKING
   → StartupScreen («Проверка сессии и профиля…»)
   → load DataStore + Keystore
-  → CHECKING → READY
-       ├─ есть валидный auth-токен → основной экран
-       └─ нет/истёк                → LoginScreen
+  → access-токен валиден? ── да ──► основной экран
+  → нет, refresh валиден? ── да ──► POST /auth/refresh → основной экран
+  → нет/refresh истёк ─────────────► LoginScreen
 ```
 
 `StartupScreen` — кастомный второй splash после системного.
@@ -325,17 +326,51 @@ VpnViewModel.onLogin
    ▼
 AuthRepository ── POST /auth/login ──► guardwire-auth-server (8090)
    │                                      │ scrypt-проверка пароля
-   │                                      │ токен (12 ч) + WireGuard peer
-   ◄──────── token, expires_at, wireguard ┘
+   │                                      │ access (15 мин) + refresh (30 дней)
+   │                                      │ + WireGuard peer
+   ◄──── access, refresh, сроки, wireguard ┘
    │
-   ├─ token → DataStore (зашифрован Keystore)
-   ├─ token → PSK для GuardWire
+   ├─ access → DataStore (зашифрован Keystore) → PSK для GuardWire
+   ├─ refresh → DataStore (зашифрован Keystore)
    └─ wireguard → конфиг с приватным ключом на устройстве → DataStore
 ```
 
-`GuardWire`-сервер читает активный токен из `tools/.guardwire-token` и
-использует его как PSK. Auth-сервер с `--wg-interface wg0` добавляет peer в
+При старте и перед подключением `EnsureAuthSessionUseCase` проверяет access.
+Если он истёк, а refresh ещё жив, клиент вызывает `POST /auth/refresh`,
+получает новую пару токенов и сохраняет её. Повторный логин нужен только
+после истечения refresh.
+
+`GuardWire`-сервер читает активный access-токен из `tools/.guardwire-token`
+и использует его как PSK. Auth-сервер с `--wg-interface wg0` добавляет peer в
 живой интерфейс WireGuard и возвращает параметры для конфига.
+
+`POST /auth/logout` отзывает refresh-сессию, удаляет peer и активный
+access-токен на сервере. Кнопка «Выйти» вызывает его перед локальной очисткой.
+
+### 5.8. Сеть, reconnect и always-on
+
+`GuardWireVpnService` регистрирует `ConnectivityManager.NetworkCallback`:
+
+- при потере или смене сети туннель закрывается и запускается переподключение;
+- попытки идут с задержкой 1, 2, 4, 8, 16 секунд;
+- после 5 неудач состояние переходит в `Failed`, сервис показывает ошибку;
+- при успехе счётчик попыток и таймер соединения сбрасываются.
+
+Always-on:
+
+```
+Система (always-on VPN)
+  → Intent action = android.net.VpnService
+  → GuardWireVpnService.handleAlwaysOn()
+  → читает сохранённый GuardWire-профиль
+  → EnsureAuthSessionUseCase продлевает access при необходимости
+  → поднимает туннель без Activity
+```
+
+В UI есть кнопка «Открыть настройки VPN»: Android не позволяет включить
+always-on программно, пользователь выбирает GuardWire в системных настройках.
+Для реального WireGuard-режима always-on не настроен — библиотека использует
+собственный `VpnService`.
 
 ---
 
@@ -585,6 +620,10 @@ sudo python3 tools/guardwire-auth-server.py \
     --user demo:demo \
     --wg-interface wg0 \
     --wg-endpoint 192.168.100.4:51820
+
+# по умолчанию: access — 15 минут, refresh — 30 дней
+# можно переопределить:
+#   --access-ttl 900 --refresh-ttl 2592000
 ```
 
 В приложении на экране входа:
@@ -618,9 +657,11 @@ sudo python3 tools/guardwire-auth-server.py \
 
 ```json
 {
-  "token": "<session token>",
+  "access_token": "<short-lived token>",
+  "refresh_token": "<long-lived token>",
   "username": "demo",
-  "expires_at": 1793831027.89,
+  "access_expires_at": 1793831027.89,
+  "refresh_expires_at": 1796423027.89,
   "wireguard": {
     "server_public_key": "<base64>",
     "endpoint": "192.168.100.4:51820",
@@ -631,7 +672,25 @@ sudo python3 tools/guardwire-auth-server.py \
 }
 ```
 
-`GET /auth/health` возвращает статус и список пользователей без секретов.
+`POST /auth/refresh`:
+
+```json
+{ "refresh_token": "<refresh token>" }
+```
+
+Возвращает новую пару `access_token` / `refresh_token`; старый refresh
+инвалидируется (rotation).
+
+`POST /auth/logout`:
+
+```json
+{ "refresh_token": "<refresh token>" }
+```
+
+Отзывает сессию, удаляет WireGuard peer и активный access-токен.
+
+`GET /auth/health` возвращает статус, список пользователей и число сессий
+без секретов.
 
 ### Полноценный тестовый сервер (Linux, TUN + NAT)
 
@@ -737,7 +796,7 @@ adb reverse tcp:8443 tcp:8443
 
 Покрыто:
 
-- use case-и: валидация GuardWire-конфига и загрузка сессии;
+- use case-и: валидация GuardWire-конфига, загрузка/продление сессии, logout;
 - кодирование/декодирование кадров;
 - пустой payload;
 - обрезанные данные;
@@ -769,7 +828,10 @@ adb reverse tcp:8443 tcp:8443
 - Hilt: `@HiltAndroidApp`, `@AndroidEntryPoint` Activity/VpnService,
   `@HiltViewModel`, внедрение синглтонов и сервисов проверено на устройстве.
 - Startup-гейт: при валидной сессии логин не мелькает, сразу основной экран.
-- Auth: вход `demo/demo`, токен в DataStore, GuardWire PSK и logout проверены.
+- Auth: вход `demo/demo`, access + refresh, продление сессии при истёкшем
+  access и серверный logout с удалением токена проверены.
+- Reconnect: при выключении/включении Wi-Fi сервис сделал несколько попыток
+  с backoff и восстановил туннель.
 - WireGuard provisioning: auth-сервер под root добавил peer `10.66.0.3`,
   приложение получило конфиг и реальный режим прошёл ping/curl.
 - Linux-сервер: создание TUN, handshake, PING/PONG, прохождение ICMP-пакета
@@ -790,24 +852,29 @@ adb reverse tcp:8443 tcp:8443
 - **Криптография учебная.** ECDH + AES-GCM реализованы корректно по базовым
   принципам, но протокол не проходил аудит; не используйте его для реальной
   защиты данных.
-- **Один общий PSK.** Нет ротации ключей, отдельных учёток и отзыва доступа.
-  Токен `demo` годится только для теста; берите длинный случайный PSK.
+- **Один активный PSK на сессию.** Access-токен ротируется при refresh, logout
+  отзывает сессию и peer, но отдельных ключей на каждое устройство нет.
 - **Нет tun2socks.** Клиент не разбирает TCP/UDP и не проксирует их в сокеты;
   сервер должен сам маршрутизировать IP-пакеты.
 - **IPv6 запрещён.** Маршрутизируется только IPv4; IPv6-конфиг отклоняется.
-- **Нет split tunneling, always-on VPN, DNS leak protection.**
-- **Секреты в DataStore.** PSK и WireGuard-конфиг шифруются ключом Android
-  Keystore, но общего аудита и ротации ключей нет.
+- **Нет split tunneling и DNS leak protection.**
+- **Always-on поддержан для GuardWire.** Системный always-on поднимает
+  `GuardWireVpnService` и берёт сохранённый профиль. Для реального
+  WireGuard-режима always-on не настроен: библиотека использует свой
+  `VpnService`.
+- **Секреты в DataStore.** Access/refresh-токены и WireGuard-конфиг
+  шифруются ключом Android Keystore; PSK не показывается в UI. `allowBackup`
+  отключён, но общего аудита и ротации ключей нет.
 - **Auth-сервер использует HTTP без TLS.** Только для доверенной тестовой сети;
   в приложении включён `usesCleartextTraffic`.
-- **Logout пока локальный.** Токен в `tools/.guardwire-token` и WireGuard peer
-  на сервере не отзываются сразу — они живут до истечения токена/следующего
-  логина или удаляются вручную.
-- **Один активный токен и один peer на пользователя.** Повторный логин
+- **Один активный refresh и один peer на пользователя.** Повторный логин
   заменяет предыдущий; несколько устройств одновременно не поддерживаются.
+- **Logout best-effort.** Если сервер недоступен, локальные токены удаляются,
+  но refresh на сервере живёт до истечения TTL.
 - **WireGuard peer добавляется в живой `wg0`, но не в `/etc/wireguard/wg0.conf`.**
   После перезагрузки ПК нужен повторный вход.
-- **Нет refresh-токена.** Через 12 часов нужен повторный логин.
+- **Refresh-токен хранится в DataStore.** На сервере хранится только его
+  SHA-256; при logout/истечении нужен повторный вход.
 - **Hilt-синглтоны живут в процессе.** Это нормально для приложения, но
   для фоновых/удалённых процессов нужен отдельный scoped-граф.
 - **`specialUse` FGS type.** Для Google Play требуется декларация назначения и
@@ -824,8 +891,9 @@ adb reverse tcp:8443 tcp:8443
 - Полноценный tun2socks с разбором TCP/UDP.
 - IPv6 и управление маршрутами.
 - Split tunneling и `addDisallowedApplication`.
-- Always-on VPN и блокировка при падении туннеля.
-- Логин/пароль, серверный control plane и сессионные токены.
+- Always-on для реального WireGuard-режима.
+- Блокировка трафика при падении туннеля (kill switch) через always-on.
+- Серверный control plane с БД и несколькими устройствами.
 - Аудит криптографии и ротация ключей.
 - Тесты ViewModel с Orbit test-раннером.
 - CI: сборка, unit-тесты, lint.
@@ -836,7 +904,7 @@ adb reverse tcp:8443 tcp:8443
 
 | Файл | Что показывает |
 |------|----------------|
-| [GuardWireVpnService.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireVpnService.kt) | наследование `VpnService`, TUN, foreground-уведомление |
+| [GuardWireVpnService.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireVpnService.kt) | `VpnService`, TUN, always-on, reconnect, foreground-уведомление |
 | [GuardWireTunnel.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireTunnel.kt) | TUN ↔ GuardWire, keep-alive, счётчики |
 | [VpnSession.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/VpnSession.kt) | контракт фасада VPN для UI |
 | [AuthService.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/AuthService.kt) | контракт auth/control-plane |
@@ -844,6 +912,7 @@ adb reverse tcp:8443 tcp:8443
 | [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | реализация фасада: запуск, остановка |
 | [LoadVpnSettingsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoadVpnSettingsUseCase.kt) | загрузка настроек и проверка сессии |
 | [LoginUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoginUseCase.kt) | вход и сохранение выданного профиля |
+| [EnsureAuthSessionUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/EnsureAuthSessionUseCase.kt) | продление access через refresh |
 | [VpnConnectionUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnConnectionUseCase.kt) | подключение/отключение и состояние |
 | [VpnLogsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnLogsUseCase.kt) | журнал приложения |
 | [VpnUseCaseModule.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/di/VpnUseCaseModule.kt) | Hilt-сборка use case-ов |

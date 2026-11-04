@@ -66,9 +66,12 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
             guardWire = guardWire,
             wireGuardConfig = wireGuardConfig,
             authToken = prefs[KEY_AUTH_TOKEN]?.let(cipher::decrypt),
+            authRefreshToken = prefs[KEY_AUTH_REFRESH_TOKEN]?.let(cipher::decrypt),
             authUsername = prefs[KEY_AUTH_USER],
             authExpiresAt = prefs[KEY_AUTH_EXPIRES]?.toLongOrNull() ?: 0L,
-            authBaseUrl = prefs[KEY_AUTH_URL] ?: "http://${guardWire.host}:8090",
+            authRefreshExpiresAt = prefs[KEY_AUTH_REFRESH_EXPIRES]?.toLongOrNull() ?: 0L,
+            authBaseUrl = (prefs[KEY_AUTH_URL] ?: "https://${guardWire.host}:8090")
+                .replaceFirst("http://", "https://"),
         )
     }
 
@@ -93,15 +96,19 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
     }
 
     override suspend fun saveAuth(
-        token: String,
+        accessToken: String,
+        refreshToken: String,
         username: String,
-        expiresAtEpochSeconds: Long,
+        accessExpiresAtEpochSeconds: Long,
+        refreshExpiresAtEpochSeconds: Long,
         baseUrl: String,
     ): Unit = withContext(Dispatchers.IO) {
         dataStore.edit {
-            it[KEY_AUTH_TOKEN] = cipher.encrypt(token)
+            it[KEY_AUTH_TOKEN] = cipher.encrypt(accessToken)
+            it[KEY_AUTH_REFRESH_TOKEN] = cipher.encrypt(refreshToken)
             it[KEY_AUTH_USER] = username
-            it[KEY_AUTH_EXPIRES] = expiresAtEpochSeconds.toString()
+            it[KEY_AUTH_EXPIRES] = accessExpiresAtEpochSeconds.toString()
+            it[KEY_AUTH_REFRESH_EXPIRES] = refreshExpiresAtEpochSeconds.toString()
             it[KEY_AUTH_URL] = baseUrl
         }
     }
@@ -109,8 +116,10 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
     override suspend fun clearAuth(): Unit = withContext(Dispatchers.IO) {
         dataStore.edit {
             it.remove(KEY_AUTH_TOKEN)
+            it.remove(KEY_AUTH_REFRESH_TOKEN)
             it.remove(KEY_AUTH_USER)
             it.remove(KEY_AUTH_EXPIRES)
+            it.remove(KEY_AUTH_REFRESH_EXPIRES)
         }
     }
 
@@ -133,8 +142,10 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         val KEY_TOKEN = stringPreferencesKey("token_encrypted")
         val KEY_WG_CONFIG = stringPreferencesKey("wireguard_config_encrypted")
         val KEY_AUTH_TOKEN = stringPreferencesKey("auth_token_encrypted")
+        val KEY_AUTH_REFRESH_TOKEN = stringPreferencesKey("auth_refresh_token_encrypted")
         val KEY_AUTH_USER = stringPreferencesKey("auth_username")
         val KEY_AUTH_EXPIRES = stringPreferencesKey("auth_expires_at")
+        val KEY_AUTH_REFRESH_EXPIRES = stringPreferencesKey("auth_refresh_expires_at")
         val KEY_AUTH_URL = stringPreferencesKey("auth_base_url")
     }
 }

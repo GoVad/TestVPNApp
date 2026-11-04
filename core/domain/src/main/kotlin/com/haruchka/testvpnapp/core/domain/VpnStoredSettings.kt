@@ -9,7 +9,9 @@ data class VpnStoredSettings(
     val guardWire: VpnServerConfig = VpnServerConfig(),
     val wireGuardConfig: String? = null,
     val authToken: String? = null,
+    val authRefreshToken: String? = null,
     val authUsername: String? = null,
     val authExpiresAt: Long = 0L,
-    val authBaseUrl: String = "http://${VpnServerConfig().host}:8090",
+    val authRefreshExpiresAt: Long = 0L,
+    val authBaseUrl: String = "https://${VpnServerConfig().host}:8090",
 )

@@ -2,6 +2,8 @@ package com.haruchka.testvpnapp.feature.vpn
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.orbitmvi.orbit.compose.collectAsState
 import org.orbitmvi.orbit.compose.collectSideEffect
@@ -33,6 +36,7 @@ fun VpnRoute(
     var showLogs by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     val consentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -51,6 +55,11 @@ fun VpnRoute(
             is VpnSideEffect.LaunchVpnConsent -> consentLauncher.launch(effect.intent)
             VpnSideEffect.RequestNotificationPermission ->
                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            VpnSideEffect.OpenVpnSettings -> {
+                val intent = Intent(Settings.ACTION_VPN_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(intent) }
+            }
             is VpnSideEffect.ShowMessage ->
                 snackbarHostState.showSnackbar(effect.message)
         }
@@ -98,11 +107,12 @@ fun VpnRoute(
             onShowLogs = { showLogs = true },
             onLogout = { viewModel.onLogout() },
             username = state.username,
-            onWireGuardConfigSaved = { viewModel.onWireGuardConfigSaved(it) },
+            onWireGuardConfigRequested = { viewModel.onWireGuardConfigRequested() },
             onWireGuardConfigCleared = { viewModel.onWireGuardConfigCleared() },
             onHostChange = { viewModel.onHostChanged(it) },
             onPortChange = { viewModel.onPortChanged(it) },
             onTokenChange = { viewModel.onTokenChanged(it) },
+            onOpenVpnSettings = { viewModel.onOpenVpnSettings() },
             modifier = Modifier.padding(innerPadding),
         )
     }
