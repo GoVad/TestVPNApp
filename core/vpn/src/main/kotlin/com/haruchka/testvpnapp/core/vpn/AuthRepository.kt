@@ -6,6 +6,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /** Результат успешного входа в auth/control-plane. */
 data class AuthSession(
@@ -25,7 +27,8 @@ class AuthException(message: String, cause: Throwable? = null) : Exception(messa
  * сессионный токен; для WireGuard дополнительно приходит набор полей, из
  * которых собирается конфиг с приватным ключом, сгенерированным на устройстве.
  */
-class AuthRepository {
+@Singleton
+class AuthRepository @Inject constructor() {
 
     suspend fun login(
         baseUrl: String,

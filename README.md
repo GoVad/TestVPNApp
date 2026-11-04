@@ -212,9 +212,9 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 
 | Модуль | Назначение | Технологии |
 |--------|------------|------------|
-| `:app` | Activity, тема, ручной DI-граф | Compose, Activity |
-| `:feature:vpn` | Экран, Orbit ViewModel, side effects | Compose, Orbit |
-| `:core:vpn` | GuardWire-сервис, WireGuard-контроллер, DataStore/Keystore, логи | Android SDK, WireGuard |
+| `:app` | `@HiltAndroidApp`, Activity, тема | Compose, Hilt |
+| `:feature:vpn` | Экран, Orbit ViewModel, side effects | Compose, Orbit, Hilt |
+| `:core:vpn` | GuardWire-сервис, WireGuard-контроллер, DataStore/Keystore, логи | Android SDK, WireGuard, Hilt |
 | `:core:protocol` | GuardWire/2: кадры, handshake, ECDH/AES, TCP-клиент | Kotlin/JVM |
 | `:core:model` | Модели состояния и конфигурации | Kotlin/JVM |
 
@@ -224,7 +224,7 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 - `:core:protocol` знает только модели и `java.net`.
 - `:core:vpn` не знает про Compose и Orbit.
 - `:feature:vpn` не знает, как устроен TUN.
-- `:app` — единственное место сборки графа объектов.
+- `:app` — Hilt entry point; зависимости собираются Hilt, а не вручную.
 
 ### 5.3. Поток состояния
 
@@ -232,21 +232,58 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 GuardWireVpnService / WireGuardController
         │  состояние, статистика, логи
         ▼
-VpnStateStore.shared / VpnLogStore.shared
+VpnStateStore / VpnLogStore (Hilt @Singleton)
         │
         ▼
 VpnController.state
         │
         ▼
-VpnViewModel (Orbit container)
+VpnViewModel (Hilt + Orbit container)
         │  intent → reduce → postSideEffect
         ▼
 VpnScreen (stateless Compose)
 ```
 
-- `VpnStateStore.shared` — осознанное упрощение демо вместо bound-сервиса/DI.
+- `VpnStateStore`, `VpnLogStore`, `VpnController`, `WireGuardController`,
+  `VpnSettingsRepository` и `AuthRepository` — Hilt-синглтоны.
+- `GuardWireVpnService` получает store/log через `@AndroidEntryPoint`.
+- `VpnViewModel` создаётся через `hiltViewModel()`.
 - UI не пишет в store напрямую.
 - Permission-диалоги и snackbar — только через `VpnSideEffect`.
+
+### 5.4. Hilt
+
+- `GuardWireApp` помечен `@HiltAndroidApp`.
+- `MainActivity` и `GuardWireVpnService` — `@AndroidEntryPoint`.
+- `VpnViewModel` — `@HiltViewModel`.
+- Синглтоны: `VpnStateStore`, `VpnLogStore`, `VpnController`,
+  `WireGuardController`, `VpnSettingsRepository`, `AuthRepository`.
+- `app`, `core:vpn`, `feature:vpn` используют Hilt Gradle Plugin + KSP.
+- Для AGP 9 built-in Kotlin в `gradle.properties` стоит
+  `android.disallowKotlinSourceSets=false` — KSP добавляет сгенерированные
+  исходники через `kotlin.sourceSets`.
+
+### 5.5. Auth-flow
+
+```
+LoginScreen
+   │ baseUrl, username, password
+   ▼
+VpnViewModel.onLogin
+   ▼
+AuthRepository ── POST /auth/login ──► guardwire-auth-server (8090)
+   │                                      │ scrypt-проверка пароля
+   │                                      │ токен (12 ч) + WireGuard peer
+   ◄──────── token, expires_at, wireguard ┘
+   │
+   ├─ token → DataStore (зашифрован Keystore)
+   ├─ token → PSK для GuardWire
+   └─ wireguard → конфиг с приватным ключом на устройстве → DataStore
+```
+
+`GuardWire`-сервер читает активный токен из `tools/.guardwire-token` и
+использует его как PSK. Auth-сервер с `--wg-interface wg0` добавляет peer в
+живой интерфейс WireGuard и возвращает параметры для конфига.
 
 ---
 
@@ -512,6 +549,38 @@ sudo python3 tools/guardwire-auth-server.py \
 > локальной сети. В приложении для этого включён `usesCleartextTraffic`.
 > Для production нужен HTTPS.
 
+#### Auth API
+
+`POST /auth/login`:
+
+```json
+{
+  "username": "demo",
+  "password": "demo",
+  "device_name": "android",
+  "wg_public_key": "<base64 public key>"
+}
+```
+
+Ответ:
+
+```json
+{
+  "token": "<session token>",
+  "username": "demo",
+  "expires_at": 1793831027.89,
+  "wireguard": {
+    "server_public_key": "<base64>",
+    "endpoint": "192.168.100.4:51820",
+    "client_ip": "10.66.0.3/32",
+    "dns": "1.1.1.1",
+    "mtu": 1420
+  }
+}
+```
+
+`GET /auth/health` возвращает статус и список пользователей без секретов.
+
 ### Полноценный тестовый сервер (Linux, TUN + NAT)
 
 Сервер создаёт TUN `guardwire0`, включает IPv4 forwarding и NAT через
@@ -641,9 +710,14 @@ adb reverse tcp:8443 tcp:8443
 
 ### Проверено вручную
 
-- Устройство: Samsung SM-A525F, Android 14.
+- Устройства: Samsung SM-A525F (Android 14) и Xiaomi 21121119SG (Android 13).
 - Пройдены permission-диалоги, подключение к демо-серверу, TUN, статистика,
   отключение и сценарий ошибки.
+- Hilt: `@HiltAndroidApp`, `@AndroidEntryPoint` Activity/VpnService,
+  `@HiltViewModel`, внедрение синглтонов и сервисов проверено на устройстве.
+- Auth: вход `demo/demo`, токен в DataStore, GuardWire PSK и logout проверены.
+- WireGuard provisioning: auth-сервер под root добавил peer `10.66.0.3`,
+  приложение получило конфиг и реальный режим прошёл ping/curl.
 - Linux-сервер: создание TUN, handshake, PING/PONG, прохождение ICMP-пакета
   через TUN и корректный cleanup проверены в изолированном network namespace.
 - Полный LAN-сценарий с NAT не запускался автоматически: для него нужен
@@ -670,9 +744,18 @@ adb reverse tcp:8443 tcp:8443
 - **Нет split tunneling, always-on VPN, DNS leak protection.**
 - **Секреты в DataStore.** PSK и WireGuard-конфиг шифруются ключом Android
   Keystore, но общего аудита и ротации ключей нет.
-- **Auth-сервер использует HTTP без TLS.** Только для доверенной тестовой сети.
-- **`VpnStateStore.shared` — глобальный объект.** Для демо достаточно; в
-  большом приложении состояние лучше отдавать через bound-сервис/DI.
+- **Auth-сервер использует HTTP без TLS.** Только для доверенной тестовой сети;
+  в приложении включён `usesCleartextTraffic`.
+- **Logout пока локальный.** Токен в `tools/.guardwire-token` и WireGuard peer
+  на сервере не отзываются сразу — они живут до истечения токена/следующего
+  логина или удаляются вручную.
+- **Один активный токен и один peer на пользователя.** Повторный логин
+  заменяет предыдущий; несколько устройств одновременно не поддерживаются.
+- **WireGuard peer добавляется в живой `wg0`, но не в `/etc/wireguard/wg0.conf`.**
+  После перезагрузки ПК нужен повторный вход.
+- **Нет refresh-токена.** Через 12 часов нужен повторный логин.
+- **Hilt-синглтоны живут в процессе.** Это нормально для приложения, но
+  для фоновых/удалённых процессов нужен отдельный scoped-граф.
 - **`specialUse` FGS type.** Для Google Play требуется декларация назначения и
   соблюдение политики.
 - **Маршрут по умолчанию.** Реальное приложение должно продумать маршруты,
@@ -690,7 +773,6 @@ adb reverse tcp:8443 tcp:8443
 - Always-on VPN и блокировка при падении туннеля.
 - Логин/пароль, серверный control plane и сессионные токены.
 - Аудит криптографии и ротация ключей.
-- Bound-сервис или DI (Hilt/Koin) вместо глобального store.
 - Тесты ViewModel с Orbit test-раннером.
 - CI: сборка, unit-тесты, lint.
 
@@ -705,16 +787,19 @@ adb reverse tcp:8443 tcp:8443
 | [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | фасад для UI: consent, запуск, остановка |
 | [WireGuardController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/WireGuardController.kt) | реальный режим на библиотеке WireGuard |
 | [VpnSettingsRepository.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnSettingsRepository.kt) | DataStore + Keystore для секретов |
+| [AuthRepository.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/AuthRepository.kt) | HTTP-клиент auth-сервера |
 | [VpnLogStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnLogStore.kt) | общий журнал событий |
 | [VpnStateStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnStateStore.kt) | единый источник состояния |
 | [GuardWireClient.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireClient.kt) | TCP-подключение, `protect(socket)`, handshake |
 | [GuardWireCrypto.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireCrypto.kt) | ECDH, HKDF, HMAC, AES-GCM |
 | [GuardWireFrameCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireFrameCodec.kt) | формат кадров |
 | [GuardWireHandshakeCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireHandshakeCodec.kt) | формат рукопожатия |
-| [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Orbit: intents → reduce → side effects |
+| [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Hilt + Orbit: intents → reduce → side effects |
+| [LoginScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/LoginScreen.kt) | вход по логину/паролю |
 | [VpnScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnScreen.kt) | stateless Compose UI |
 | [VpnLogsScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnLogsScreen.kt) | отдельный экран логов |
-| [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | сборка экрана и DI-графа |
+| [GuardWireApp.kt](app/src/main/java/com/haruchka/testvpnapp/GuardWireApp.kt) | `@HiltAndroidApp` |
+| [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | `@AndroidEntryPoint`, Compose-экран |
 | [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки handshake и кадров |
 | [guardwire_crypto.py](tools/guardwire_crypto.py) | серверная и клиентская криптография GuardWire/2 |
 | [guardwire-auth-server.py](tools/guardwire-auth-server.py) | логин/пароль, токены и WireGuard provisioning |

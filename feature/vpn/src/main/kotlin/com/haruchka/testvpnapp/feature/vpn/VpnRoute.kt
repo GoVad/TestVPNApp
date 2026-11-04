@@ -16,10 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.haruchka.testvpnapp.core.vpn.VpnController
-import com.haruchka.testvpnapp.core.vpn.VpnSettingsRepository
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.orbitmvi.orbit.compose.collectAsState
 import org.orbitmvi.orbit.compose.collectSideEffect
 
@@ -29,15 +26,9 @@ import org.orbitmvi.orbit.compose.collectSideEffect
  */
 @Composable
 fun VpnRoute(
-    controller: VpnController,
-    settingsRepository: VpnSettingsRepository,
     modifier: Modifier = Modifier,
 ) {
-    val appContext = LocalContext.current.applicationContext
-    val factory = remember(controller, settingsRepository, appContext) {
-        VpnViewModel.factory(controller, settingsRepository, appContext)
-    }
-    val viewModel: VpnViewModel = viewModel(factory = factory)
+    val viewModel: VpnViewModel = hiltViewModel()
     val state by viewModel.collectAsState()
     var showLogs by remember { mutableStateOf(false) }
 

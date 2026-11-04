@@ -14,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.haruchka.testvpnapp.core.model.VpnMode
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import com.haruchka.testvpnapp.core.protocol.GuardWireClient
 import com.haruchka.testvpnapp.core.protocol.GuardWireConnection
@@ -36,12 +38,17 @@ import kotlinx.coroutines.launch
  * [GuardWireTunnel]. Сокет туннеля обязательно проходит через [protect],
  * иначе его пакеты попадут в собственный TUN.
  */
+@AndroidEntryPoint
 class GuardWireVpnService : VpnService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lifecycleLock = Any()
-    private val stateStore = VpnStateStore.shared
-    private val logStore = VpnLogStore.shared
+
+    @Inject
+    lateinit var stateStore: VpnStateStore
+
+    @Inject
+    lateinit var logStore: VpnLogStore
 
     @Volatile
     private var stopping = false

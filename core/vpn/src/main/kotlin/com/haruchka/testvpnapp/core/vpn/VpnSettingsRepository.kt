@@ -1,6 +1,9 @@
 package com.haruchka.testvpnapp.core.vpn
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import android.util.Base64
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
@@ -38,7 +41,8 @@ private val Context.vpnSettingsDataStore by preferencesDataStore(name = "vpn_set
  * Не секретные поля (host, port, режим) лежат открыто; токен GuardWire и
  * WireGuard-конфиг (в нём приватный ключ) шифруются ключом Android Keystore.
  */
-class VpnSettingsRepository(context: Context) {
+@Singleton
+class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Context) {
 
     private val appContext = context.applicationContext
     private val dataStore = appContext.vpnSettingsDataStore

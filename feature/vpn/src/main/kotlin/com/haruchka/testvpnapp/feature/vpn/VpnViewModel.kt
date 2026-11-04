@@ -5,10 +5,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
@@ -29,14 +29,14 @@ import org.orbitmvi.orbit.viewmodel.orbitContainer
  * MVVM + Orbit: UI отправляет интенты, ViewModel меняет состояние через
  * `reduce` и отдаёт одноразовые события через `postSideEffect`.
  */
-class VpnViewModel(
+@HiltViewModel
+class VpnViewModel @Inject constructor(
     private val controller: VpnController,
     private val settingsRepository: VpnSettingsRepository,
-    private val appContext: Context,
+    private val authRepository: AuthRepository,
+    private val logStore: VpnLogStore,
+    @param:ApplicationContext private val appContext: Context,
 ) : ViewModel(), OrbitContainerHost<VpnUiState, VpnUiState, VpnSideEffect> {
-
-    private val logStore = VpnLogStore.shared
-    private val authRepository = AuthRepository()
     private var wireGuardConfig: String? = null
     private var pending: PendingConnection? = null
 
@@ -383,15 +383,4 @@ class VpnViewModel(
         data class WireGuard(val configText: String) : PendingConnection
     }
 
-    companion object {
-        fun factory(
-            controller: VpnController,
-            settingsRepository: VpnSettingsRepository,
-            appContext: Context,
-        ): ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                VpnViewModel(controller, settingsRepository, appContext)
-            }
-        }
-    }
 }

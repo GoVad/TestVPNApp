@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import androidx.core.content.ContextCompat
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
@@ -15,13 +18,14 @@ import kotlinx.coroutines.flow.StateFlow
  * Отвечает за запрос согласия системы, запуск foreground-сервиса и чтение
  * состояния. Сама логика туннеля живёт в сервисе.
  */
-class VpnController(
-    context: Context,
-    private val stateStore: VpnStateStore = VpnStateStore.shared,
+@Singleton
+class VpnController @Inject constructor(
+    @ApplicationContext context: Context,
+    private val stateStore: VpnStateStore,
+    private val wireGuard: WireGuardController,
 ) {
 
     private val appContext = context.applicationContext
-    private val wireGuard = WireGuardController(appContext, stateStore)
 
     val state: StateFlow<VpnRuntimeState> = stateStore.state
 

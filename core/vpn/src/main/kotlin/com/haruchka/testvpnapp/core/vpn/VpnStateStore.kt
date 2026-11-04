@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Единственный источник состояния VPN-движка в процессе приложения.
@@ -16,7 +18,8 @@ import kotlinx.coroutines.flow.update
  * [GuardWireVpnService] и WireGuard-контроллер пишут сюда, а `VpnController`
  * и UI читают.
  */
-class VpnStateStore {
+@Singleton
+class VpnStateStore @Inject constructor() {
 
     private val _state = MutableStateFlow(VpnRuntimeState())
     val state: StateFlow<VpnRuntimeState> = _state.asStateFlow()
@@ -69,8 +72,4 @@ class VpnStateStore {
         }
     }
 
-    companion object {
-        /** Экземпляр по умолчанию для демо без DI. */
-        val shared: VpnStateStore = VpnStateStore()
-    }
 }

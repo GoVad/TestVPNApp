@@ -1,6 +1,9 @@
 package com.haruchka.testvpnapp.core.vpn
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import com.haruchka.testvpnapp.core.model.VpnConnectionState
 import com.haruchka.testvpnapp.core.model.VpnMode
 import com.haruchka.testvpnapp.core.model.VpnTrafficStats
@@ -21,10 +24,11 @@ import kotlinx.coroutines.launch
  * GoBackend сам создаёт VpnService, TUN и шифрует трафик Noise/ChaCha20.
  * Приложение держит отдельный foreground-сервис с уведомлением.
  */
-class WireGuardController(
-    context: Context,
-    private val stateStore: VpnStateStore = VpnStateStore.shared,
-    private val logStore: VpnLogStore = VpnLogStore.shared,
+@Singleton
+class WireGuardController @Inject constructor(
+    @ApplicationContext context: Context,
+    private val stateStore: VpnStateStore,
+    private val logStore: VpnLogStore,
 ) {
 
     private val appContext = context.applicationContext

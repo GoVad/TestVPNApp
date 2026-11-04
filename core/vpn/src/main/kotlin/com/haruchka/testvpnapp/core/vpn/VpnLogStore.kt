@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Общий журнал приложения.
@@ -12,7 +14,8 @@ import kotlinx.coroutines.flow.update
  * Сюда пишут сервисы и контроллеры, UI читает и показывает в отдельном окне.
  * Не логируем токены, приватные ключи и содержимое трафика.
  */
-class VpnLogStore {
+@Singleton
+class VpnLogStore @Inject constructor() {
 
     private val _logs = MutableStateFlow<List<VpnLogEntry>>(emptyList())
     val logs: StateFlow<List<VpnLogEntry>> = _logs.asStateFlow()
@@ -29,8 +32,7 @@ class VpnLogStore {
         _logs.value = emptyList()
     }
 
-    companion object {
-        private const val MAX_ENTRIES = 200
-        val shared = VpnLogStore()
+    private companion object {
+        const val MAX_ENTRIES = 200
     }
 }

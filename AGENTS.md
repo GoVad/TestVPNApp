@@ -3,14 +3,14 @@
 ## Что это за репозиторий
 
 `GuardWire VPN` — учебное Android-приложение, демонстрирующее собственный VPN-клиент:
-`VpnService` + TUN, GuardWire/2 и WireGuard, foreground-сервис, модульная архитектура и MVVM + Orbit MVI.
+`VpnService` + TUN, GuardWire/2 и WireGuard, foreground-сервис, модульная архитектура, Hilt и MVVM + Orbit MVI.
 
 Спецификация: `README.md`; путь к production: `theory.md`.
 
 ## Стек и окружение
 
 - Kotlin 2.2.10, AGP 9.2.1, Gradle 9.4.1, JDK 17.
-- Jetpack Compose (BOM 2026.02.01), Orbit MVI 12.0.1, WireGuard tunnel 1.0.20260102.
+- Compose (BOM 2026.02.01), Orbit 12.0.1, WireGuard 1.0.20260102, Hilt 2.60.1 + KSP.
 - `compileSdk 37`, `targetSdk 36`, `minSdk 24`.
 - Модули: `:app`, `:feature:vpn`, `:core:vpn`, `:core:protocol`, `:core:model`.
 - `:core:model` и `:core:protocol` — чистый Kotlin/JVM, без Android API.
@@ -28,7 +28,7 @@
 
 - Направление зависимостей: `app → feature:vpn → core:vpn → core:protocol → core:model`.
 - Не протаскивай Android/Compose/`VpnService` в нижние слои и не ломай направление зависимостей.
-- Поток состояния: `GuardWireVpnService` / `WireGuardController` → `VpnStateStore.shared` → `VpnController.state` → `VpnViewModel` → Compose.
+- Поток состояния: `GuardWireVpnService` / `WireGuardController` → Hilt `VpnStateStore` → `VpnController.state` → `VpnViewModel` → Compose.
 - Permission-диалоги, snackbar и навигационные события — только через `VpnSideEffect`.
 - Compose-экран должен оставаться stateless; бизнес-логика и валидация — в `VpnViewModel`.
 - Новые модули/фичи подключай через `settings.gradle.kts` и `gradle/libs.versions.toml`.
@@ -37,7 +37,8 @@
 
 - Сокет туннеля обязан проходить через `VpnService.protect()` **до** `connect()`, иначе трафик попадёт в собственный TUN.
 - `GuardWireVpnService` обязан вызывать `startForeground` в `onCreate`/`onStartCommand`; для API 34+ используется тип `specialUse` и permission `FOREGROUND_SERVICE_SPECIAL_USE`.
-- VPN-сервис объявлен с `android:permission="android.permission.BIND_VPN_SERVICE"`; библиотечный WireGuard-сервис не переопределяй.
+- VPN-сервис объявлен с `android:permission="android.permission.BIND_VPN_SERVICE"`; `GuardWireVpnService` — `@AndroidEntryPoint`, библиотечный WireGuard-сервис не переопределяй.
+- Hilt: `@HiltAndroidApp`, `@HiltViewModel`, `@AndroidEntryPoint`; KSP требует `android.disallowKotlinSourceSets=false` для AGP 9.
 - Запись GuardWire-кадров синхронизирована; payload шифруется AES-256-GCM, тип кадра идёт в AAD, IV случайный на кадр.
 - Токен — это PSK для HMAC-аутентификации handshake; не передавай и не логируй его.
 - При изменении handshake/криптографии синхронно правь Kotlin и Python-серверы, обновляй `GuardWireCodecTest`, `GuardWireCryptoTest`, `GuardWireClientTest`.
