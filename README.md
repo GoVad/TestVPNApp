@@ -1,85 +1,253 @@
-# GuardWire VPN Demo
+# GuardWire VPN
 
-Маленькое учебное Android-приложение, которое показывает, как собрать
-собственный VPN-клиент:
+**Учебный VPN-клиент для Android.** Демонстрирует, как устроено собственное
+VPN-приложение: `VpnService`, TUN-интерфейс, foreground-сервис, собственный
+протокол поверх TCP, модульная архитектура и MVVM + Orbit MVI.
 
-- `VpnService` + `VpnService.Builder` для TUN-интерфейса;
-- foreground-сервис с постоянным уведомлением;
-- собственный протокол **GuardWire/1** поверх TCP;
-- модульная архитектура;
-- MVVM + [Orbit MVI](https://github.com/orbit-mvi/orbit-mvi) для UI.
+> **Статус: демо.** GuardWire/1 — учебный протокол из этого репозитория, а не
+> промышленный стандарт. Приложение не шифрует трафик и не выполняет NAT,
+> поэтому не предназначено для реальной защиты соединения.
 
-> **Важно.** GuardWire — учебный протокол из этого репозитория, а не
-> промышленный стандарт. Приложение не шифрует трафик, не делает NAT и не
-> заменяет tun2socks. Для реального выхода в интернет нужен GuardWire-сервер,
-> который принимает IP-пакеты и маршрутизирует их дальше.
+## Быстрый старт
 
-## Модули
+```bash
+# 1. поднять демо-сервер
+python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 
-```
-:app             — Activity, ручной DI-граф, тема
-:feature:vpn     — Compose-экран + Orbit ViewModel
-:core:vpn        — GuardWireVpnService, TUN ↔ GuardWire, контроллер, настройки
-:core:protocol   — кадры, рукопожатие, GuardWire-клиент (чистый Kotlin/JVM)
-:core:model      — состояния подключения, конфиг сервера, счётчики трафика
+# 2. собрать приложение
+./gradlew :app:assembleDebug
 ```
 
-Направление зависимостей:
+Затем в приложении: **host** `10.0.2.2`, **port** `8443`, **token** `demo` для
+эмулятора. Для физического устройства по USB выполните
+`adb reverse tcp:8443 tcp:8443` и укажите host `127.0.0.1`. Демо-сервер не
+маршрутизирует IP-пакеты, поэтому интернет через туннель не появится — это
+ожидаемо.
+
+---
+
+## 1. Зачем это нужно
+
+Проект отвечает на вопрос «как написать свой VPN-клиент под Android», не
+пряча ключевые механики за библиотеками:
+
+- как получить системное разрешение на VPN;
+- как поднять TUN через `VpnService.Builder`;
+- как не зациклить трафик собственного туннеля через `protect(socket)`;
+- как показать постоянное уведомление foreground-сервиса;
+- как отделить протокол от Android и UI;
+- как организовать состояние и permission-flow через MVVM + Orbit.
+
+### Цели
+
+- Рабочий демонстрационный туннель: рукопожатие, передача IP-пакетов,
+  keep-alive, статистика, корректное отключение.
+- Читаемая модульная архитектура, которую можно использовать как скелет.
+- Понятная спецификация GuardWire/1 и воспроизводимый демо-сервер.
+
+### Не-цели
+
+- Продакшен-VPN и защита трафика.
+- Шифрование, аутентификация трафика, обфускация.
+- Полноценный tun2socks/NAT и реальный выход в интернет.
+- IPv6, split tunneling, always-on VPN, DNS leak protection.
+- Публикация в Google Play.
+
+---
+
+## 2. Пользовательские сценарии
+
+### 2.1. Первое подключение
+
+1. Пользователь открывает приложение.
+2. Вводит host/IP, порт и токен GuardWire-сервера.
+3. Нажимает «Подключиться».
+4. Приложение запрашивает разрешение на уведомления (Android 13+).
+5. Приложение показывает системный диалог согласия на VPN.
+6. После согласия запускается foreground-сервис, устанавливается GuardWire-
+   соединение, создаётся TUN.
+7. UI показывает статус «Защищено», время сессии, входящий/исходящий трафик и
+   журнал событий.
+8. В системном статус-баре появляется значок VPN, в шторке — уведомление с
+   кнопкой «Отключить».
+
+### 2.2. Отключение
+
+- Кнопка «Отключиться» в приложении или действие в уведомлении.
+- Сервис закрывает TUN и сокет, останавливает корутины, убирает уведомление
+  и переводит состояние в «Отключено».
+
+### 2.3. Ошибка подключения
+
+- Сервер недоступен, handshake отклонён, TUN не создался или соединение
+  оборвалось.
+- UI показывает причину, сервис останавливается, VPN-интерфейс не остаётся
+  в полурабочем состоянии.
+- Повторное нажатие «Подключиться снова» запускает новую попытку.
+
+### 2.4. Отзыв разрешения системой
+
+- Пользователь отключает VPN в настройках или система отзывает разрешение.
+- Вызывается `onRevoke()`, туннель закрывается, UI получает состояние
+  «Ошибка: VPN-подключение отозвано системой».
+
+### 2.5. Повторный запуск приложения
+
+- Настройки сервера сохраняются в `SharedPreferences` и подставляются в форму.
+- Если процесс приложения был убит, VPN-сервис также останавливается; новое
+  состояние начинается с «Отключено».
+
+---
+
+## 3. Функциональные требования
+
+| ID | Требование | Реализация |
+|----|------------|------------|
+| FR-1 | Системный запрос согласия на VPN | `VpnService.prepare()` + `ActivityResultContracts.StartActivityForResult` |
+| FR-2 | Запуск VPN только после согласия | `VpnController.connect()` вызывается из `onVpnConsentResult(granted = true)` |
+| FR-3 | Foreground-сервис с постоянным уведомлением | `GuardWireVpnService`, `startForeground`, канал `guardwire_vpn` |
+| FR-4 | Создание TUN с заданными параметрами | `VpnService.Builder`: `10.8.0.2/32`, `0.0.0.0/0`, DNS `1.1.1.1`, MTU 1400 |
+| FR-5 | Защита сокета туннеля от собственного TUN | `VpnService.protect(socket)` до `connect()` |
+| FR-6 | Рукопожатие GuardWire/1 | `GuardWireClient` + `GuardWireHandshakeCodec` |
+| FR-7 | Двусторонняя передача IP-пакетов | `GuardWireTunnel`: TUN → DATA-кадры и DATA → TUN |
+| FR-8 | Keep-alive и обнаружение мёртвого соединения | KEEP_ALIVE каждый интервал, PING раз в два интервала, read timeout 4×интервала |
+| FR-9 | Статистика трафика | `TrafficMeter` → `VpnStateStore` → Orbit state |
+| FR-10 | Корректное отключение и отзыв | `shutdown()`/`onRevoke()`, закрытие TUN, сокета и корутин |
+| FR-11 | Отображение ошибок | `VpnConnectionState.Failed` + snackbar для ошибок ввода |
+| FR-12 | Сохранение настроек сервера | `VpnSettingsRepository` на `SharedPreferences` |
+| FR-13 | Stateless Compose UI | `VpnScreen` принимает состояние и колбэки |
+| FR-14 | MVVM + Orbit | `VpnViewModel` с `intent` → `reduce` → `postSideEffect` |
+
+---
+
+## 4. UX и состояния
+
+### 4.1. Экран
+
+- Заголовок `GuardWire` и бейдж `DEMO`.
+- Круглая кнопка питания: цвет и свечение зависят от состояния.
+- Статус: «Отключено», «Подключение…», «Защищено», «Отключение…», «Ошибка».
+- Кнопка действия: «Подключиться», «Отключиться», «Подключиться снова».
+- Карточка сервера: host/IP, порт, токен (с переключателем видимости).
+- Карточка статистики: длительность, входящий/исходящий трафик, пакеты,
+  endpoint и MTU.
+- Журнал последних событий.
+- Блок «Как это работает» и предупреждение об ограничениях демо.
+
+### 4.2. Состояния
+
+| Состояние | Заголовок | Поля формы | Основное действие |
+|-----------|-----------|------------|-------------------|
+| `Disconnected` | Отключено | доступны | Подключиться |
+| `Connecting` | Подключение… | заблокированы | — (кнопка disabled) |
+| `Connected` | Защищено | заблокированы | Отключиться |
+| `Disconnecting` | Отключение… | заблокированы | — (кнопка disabled) |
+| `Failed` | Ошибка | доступны | Подключиться снова |
+
+### 4.3. Permission-flow
 
 ```
-app → feature:vpn → core:vpn → core:protocol → core:model
+Нажатие «Подключиться»
+        │
+        ├─ POST_NOTIFICATIONS не выдан (API 33+)
+        │       └─ системный запрос → результат (отказ не блокирует VPN)
+        │
+        ├─ VpnService.prepare() == null
+        │       └─ сразу запуск сервиса
+        │
+        └─ VpnService.prepare() != null
+                └─ системный диалог VPN → OK/Cancel
+                        ├─ OK → запуск сервиса
+                        └─ Cancel → ошибка в UI
 ```
 
-- `core:model` не знает про Android.
-- `core:protocol` не знает про `VpnService`.
-- `core:vpn` не знает про Compose.
-- `feature:vpn` не знает, как устроен TUN.
-- `app` — единственное место, где собирается граф объектов.
+---
 
-## Как устроен поток подключения
+## 5. Архитектура
 
-1. Пользователь нажимает «Подключиться».
-2. `VpnViewModel` валидирует host/port, сохраняет настройки и просит
-   разрешение на уведомления (Android 13+).
-3. `VpnController.createPermissionIntent()` вызывает `VpnService.prepare()`.
-   Если система ещё не давала согласия — UI запускает системный диалог.
-4. После согласия контроллер стартует `GuardWireVpnService` через
-   `startForegroundService`.
-5. Сервис:
-   - открывает TCP-сокет, вызывает `protect(socket)` и выполняет
-     GuardWire-рукопожатие;
-   - создаёт TUN через `Builder` (`10.8.0.2/32`, маршрут `0.0.0.0/0`,
-     DNS `1.1.1.1`, MTU 1400);
-   - запускает `GuardWireTunnel`, который гоняет IP-пакеты между TUN и
-     GuardWire-кадрами;
-   - показывает foreground-уведомление с кнопкой «Отключить».
-6. Состояние и счётчики складываются в `VpnStateStore`, а ViewModel
-   подписывается на `StateFlow` и обновляет Orbit-состояние.
+### 5.1. Модули
 
-Сокет туннеля обязательно проходит через `VpnService.protect()`, иначе его
-пакеты попадут в собственный TUN и соединение зациклится.
+```
+:app
+ └── :feature:vpn
+      └── :core:vpn
+           └── :core:protocol
+                └── :core:model
+```
 
-## Протокол GuardWire/1
+| Модуль | Назначение | Технологии |
+|--------|------------|------------|
+| `:app` | Activity, тема, ручной DI-граф | Compose, Activity |
+| `:feature:vpn` | Экран, Orbit ViewModel, side effects | Compose, Orbit |
+| `:core:vpn` | `VpnService`, TUN-мост, контроллер, настройки | Android SDK |
+| `:core:protocol` | GuardWire/1: кадры, handshake, TCP-клиент | Kotlin/JVM |
+| `:core:model` | Модели состояния и конфигурации | Kotlin/JVM |
 
-Транспорт — TCP. Числа — big-endian.
+### 5.2. Правила зависимостей
 
-### Рукопожатие
+- `:core:model` не знает про Android, Compose, `VpnService`.
+- `:core:protocol` знает только модели и `java.net`.
+- `:core:vpn` не знает про Compose и Orbit.
+- `:feature:vpn` не знает, как устроен TUN.
+- `:app` — единственное место сборки графа объектов.
+
+### 5.3. Поток состояния
+
+```
+GuardWireVpnService
+        │  состояние, статистика
+        ▼
+VpnStateStore.shared (StateFlow)
+        │
+        ▼
+VpnController.state
+        │
+        ▼
+VpnViewModel (Orbit container)
+        │  intent → reduce → postSideEffect
+        ▼
+VpnScreen (stateless Compose)
+```
+
+- `VpnStateStore.shared` — осознанное упрощение демо вместо bound-сервиса/DI.
+- UI не пишет в store напрямую.
+- Permission-диалоги и snackbar — только через `VpnSideEffect`.
+
+---
+
+## 6. Протокол GuardWire/1
+
+Транспорт — TCP. Все числа big-endian.
+
+### 6.1. Рукопожатие
 
 Клиент:
 
-```
-"GUARDWIRE" (9) | version=1 (1) | token_len (2) | token (N) | mtu (2)
-```
+| Поле | Размер | Значение |
+|------|--------|----------|
+| magic | 9 | ASCII `GUARDWIRE` |
+| version | 1 | `1` |
+| token length | 2 | длина токена |
+| token | N | UTF-8 токен |
+| mtu | 2 | MTU клиента |
 
 Сервер:
 
-```
-"GUARDWIRE" (9) | version=1 (1) | status (1) | message_len (2) | message (N)
-```
+| Поле | Размер | Значение |
+|------|--------|----------|
+| magic | 9 | ASCII `GUARDWIRE` |
+| version | 1 | `1` |
+| status | 1 | `0` — успех, иначе отказ |
+| message length | 2 | длина сообщения |
+| message | N | UTF-8 причина/приветствие |
 
-`status = 0` — успех, иначе отказ с текстовой причиной.
+Таймауты:
 
-### Кадры после рукопожатия
+- TCP connect — 10 секунд;
+- рукопожатие — 10 секунд;
+- чтение после рукопожатия — `4 × keepAlive`, но не меньше 20 секунд.
+
+### 6.2. Кадры
 
 ```
 +--------+------------------+-----------------+
@@ -90,49 +258,127 @@ app → feature:vpn → core:vpn → core:protocol → core:model
 
 | Тип | Код | Назначение |
 |-----|-----|------------|
-| DATA | `0x01` | IP-пакет из/в TUN |
+| DATA | `0x01` | целый IP-пакет из/в TUN |
 | KEEP_ALIVE | `0x02` | проверка живости |
 | DISCONNECT | `0x03` | штатное закрытие |
 | PING | `0x04` | запрос PONG |
 | PONG | `0x05` | ответ на PING |
 
-Клиент отправляет KEEP_ALIVE каждый интервал и PING раз в два интервала.
-Если сервер молчит дольше четырёх интервалов, чтение завершается по
-таймауту и туннель считается упавшим.
+Поведение:
 
-## Запуск
+- клиент отправляет KEEP_ALIVE каждый интервал;
+- каждый второй интервал отправляет PING;
+- сервер обязан ответить PONG;
+- при `DISCONNECT`, EOF или read timeout туннель считается завершённым;
+- запись кадров синхронизирована, потому что DATA и keep-alive идут из разных
+  корутин.
 
-### 1. Приложение
+---
 
-Откройте проект в Android Studio и запустите `app` на устройстве/эмуляторе
-(Android 7.0+, `minSdk 24`).
+## 7. Android-интеграция
 
-### 2. Демо-сервер
+### 7.1. TUN
 
-Сервер только принимает рукопожатие и разбирает кадры. IP-пакеты он
-отбрасывает, поэтому интернет через туннель не появится — это нормально для
-проверки UI и жизненного цикла VPN.
+- Адрес: `10.8.0.2/32`.
+- Маршрут: `0.0.0.0/0` — весь IPv4-трафик.
+- DNS: `1.1.1.1`.
+- MTU: `1400`.
+- `setBlocking(true)` — чтение TUN блокирующее.
+- `setMetered(false)` на API 29+.
+
+### 7.2. Сервис и уведомление
+
+- `GuardWireVpnService : VpnService()`.
+- `startForeground` вызывается в `onCreate`, канал `guardwire_vpn`,
+  важность `IMPORTANCE_LOW`.
+- Для API 34+ тип `specialUse`, permission
+  `FOREGROUND_SERVICE_SPECIAL_USE`.
+- В уведомлении есть действие «Отключить».
+- `android:permission="android.permission.BIND_VPN_SERVICE"`,
+  `android:exported="true"` — система должна иметь возможность привязаться.
+- `onRevoke()` и `onDestroy()` корректно закрывают туннель.
+
+### 7.3. Защита сокета
+
+Перед `connect()` клиент вызывает `VpnService.protect(socket)`. Без этого
+пакеты самого GuardWire-соединения попадут в TUN, и туннель зациклится.
+
+### 7.4. Отмена подключения
+
+Блокирующие IO-вызовы не прерываются `Job.cancel()` мгновенно. После
+`GuardWireClient.connect()` и `establish()` сервис вызывает `ensureActive()`,
+а при отмене закрывает сокет и TUN. Публикация состояния `Connected`
+синхронизирована с флагом `stopping`, чтобы отключение во время подключения
+не оставило «висящий» туннель.
+
+---
+
+## 8. Разрешения
+
+| Permission | Зачем | Если отказано |
+|------------|-------|---------------|
+| `INTERNET` | TCP-соединение с GuardWire-сервером | подключение невозможно |
+| `POST_NOTIFICATIONS` | foreground-уведомление | VPN работает, уведомление может быть скрыто |
+| `FOREGROUND_SERVICE` | длительная работа сервиса | запуск сервиса невозможен |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | тип FGS `specialUse` | запуск на API 34+ невозможен |
+| `BIND_VPN_SERVICE` | доступ системы к `VpnService` | системная привязка не произойдёт |
+
+Согласие на VPN (`VpnService.prepare`) не является обычным runtime-permission:
+его нельзя выдать из кода, только через системный диалог.
+
+---
+
+## 9. Сборка и запуск
+
+### Требования
+
+- JDK 17;
+- Android SDK с `compileSdk 37`;
+- Android 7.0+ (`minSdk 24`);
+- Python 3 — только для демо-сервера.
+
+### Сборка
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Демо-сервер
 
 ```bash
 python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 ```
 
-**Эмулятор:** оставьте в приложении host `10.0.2.2`, порт `8443`, токен
-`demo`. `10.0.2.2` из эмулятора указывает на хост-машину.
+Сервер выполняет handshake, читает кадры, отвечает на PING и пишет статистику.
+IP-пакеты он **не маршрутизирует**.
 
-**Физическое устройство по USB:**
+### Эмулятор
+
+В приложении:
+
+- host: `10.0.2.2`
+- port: `8443`
+- token: `demo`
+
+### Физическое устройство по USB
 
 ```bash
 adb reverse tcp:8443 tcp:8443
 ```
 
-В приложении укажите host `127.0.0.1`, порт `8443`, токен `demo`.
+В приложении: host `127.0.0.1`, port `8443`, token `demo`.
 
-> При активном туннеле маршрут `0.0.0.0/0` забирает весь трафик устройства,
-> а демо-сервер его отбрасывает. Интернет на телефоне пропадёт до нажатия
-> «Отключиться». Для демонстрации это ожидаемо.
+> Во время активного туннеля маршрут `0.0.0.0/0` забирает весь трафик
+> устройства, а демо-сервер его отбрасывает. Интернет на телефоне пропадёт до
+> отключения VPN. Это ожидаемое поведение демо.
 
-## Тесты
+---
+
+## 10. Тестирование
+
+### Автоматические тесты
 
 ```bash
 ./gradlew :core:protocol:test
@@ -140,37 +386,78 @@ adb reverse tcp:8443 tcp:8443
 
 Покрыто:
 
-- кодирование/декодирование кадров, пустой payload, обрезанные данные,
-  неизвестный тип;
+- кодирование/декодирование кадров;
+- пустой payload;
+- обрезанные данные;
+- неизвестный тип кадра;
 - рукопожатие: успех, отказ, чужая сигнатура;
 - интеграционный тест клиента с локальным `ServerSocket`:
   handshake → DATA → PING → PONG.
 
-## Что упрощено
+### Ручной чек-лист
 
-- **Нет шифрования.** Токен — только идентификатор, а не аутентификация
-  трафика. В продакшене нужен TLS/Noise/WireGuard-подобный обмен ключами.
-- **Нет tun2socks.** IP-пакеты уходят на сервер как есть; клиент не
-  разбирает TCP/UDP и не проксирует их в сокеты.
+- [ ] Первый запуск: показан экран «Отключено».
+- [ ] Отказ от уведомлений не блокирует VPN.
+- [ ] Отказ от системного VPN-диалога показывает ошибку.
+- [ ] Согласие запускает foreground-сервис и показывает статус «Защищено».
+- [ ] Статистика и время обновляются.
+- [ ] «Отключиться» убирает уведомление и возвращает трафик.
+- [ ] Кнопка «Отключить» в уведомлении работает.
+- [ ] Недоступный сервер даёт понятную ошибку.
+- [ ] Отзыв VPN в настройках переводит UI в состояние ошибки.
+- [ ] После поворота экрана состояние не теряется.
+
+### Проверено вручную
+
+- Устройство: Samsung SM-A525F, Android 14.
+- Пройдены permission-диалоги, подключение к демо-серверу, TUN, статистика,
+  отключение и сценарий ошибки.
+
+---
+
+## 11. Ограничения и безопасность
+
+- **Нет шифрования.** Токен — идентификатор, а не защита трафика.
+- **Нет tun2socks.** Клиент не разбирает TCP/UDP и не проксирует их в сокеты;
+  сервер должен сам маршрутизировать IP-пакеты.
 - **Нет IPv6, split tunneling, always-on VPN, DNS leak protection.**
-- **Токен хранится в обычных SharedPreferences.** Для реального приложения —
+- **Токен хранится в обычных `SharedPreferences`.** Для продакшена нужен
   Keystore/EncryptedSharedPreferences.
-- **`VpnStateStore.shared` — глобальный объект.** Для демо это заменяет
-  bound-сервис/DI. В большом приложении состояние стоит отдавать через Binder
-  или репозиторий с нормальным жизненным циклом.
-- **`specialUse` foreground service type.** Для Google Play нужна
-  декларация назначения; проверяйте актуальные требования политики.
-- **Маршрут по умолчанию.** Реальное приложение должно аккуратно выбирать
-  маршруты и исключать собственный трафик.
+- **`VpnStateStore.shared` — глобальный объект.** Для демо достаточно; в
+  большом приложении состояние лучше отдавать через bound-сервис/DI.
+- **`specialUse` FGS type.** Для Google Play требуется декларация назначения и
+  соблюдение политики.
+- **Маршрут по умолчанию.** Реальное приложение должно продумать маршруты,
+  исключения приложений и защиту от утечек.
 
-## Куда смотреть в коде
+---
+
+## 12. Возможные улучшения
+
+- TLS или Noise-подобный handshake, шифрование payload.
+- Полноценный tun2socks с разбором TCP/UDP.
+- IPv6 и управление маршрутами.
+- Split tunneling и `addDisallowedApplication`.
+- Always-on VPN и блокировка при падении туннеля.
+- Keystore/EncryptedSharedPreferences для токена и профилей.
+- Bound-сервис или DI (Hilt/Koin) вместо глобального store.
+- Тесты ViewModel с Orbit test-раннером.
+- CI: сборка, unit-тесты, lint.
+
+---
+
+## 13. Карта файлов
 
 | Файл | Что показывает |
 |------|----------------|
-| `core/vpn/GuardWireVpnService.kt` | наследование `VpnService`, TUN, foreground-уведомление |
-| `core/vpn/GuardWireTunnel.kt` | двусторонний мост TUN ↔ GuardWire, keep-alive, счётчики |
-| `core/protocol/GuardWireClient.kt` | TCP-подключение, `protect(socket)`, рукопожатие |
-| `core/protocol/GuardWireFrameCodec.kt` | формат кадров |
-| `feature/vpn/VpnViewModel.kt` | Orbit: intents → reduce → side effects |
-| `feature/vpn/VpnScreen.kt` | stateless Compose UI |
-| `tools/guardwire-demo-server.py` | минимальный сервер для проверки |
+| [GuardWireVpnService.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireVpnService.kt) | наследование `VpnService`, TUN, foreground-уведомление |
+| [GuardWireTunnel.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireTunnel.kt) | TUN ↔ GuardWire, keep-alive, счётчики |
+| [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | фасад для UI: consent, запуск, остановка |
+| [VpnStateStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnStateStore.kt) | единый источник состояния |
+| [GuardWireClient.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireClient.kt) | TCP-подключение, `protect(socket)`, handshake |
+| [GuardWireFrameCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireFrameCodec.kt) | формат кадров |
+| [GuardWireHandshakeCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireHandshakeCodec.kt) | формат рукопожатия |
+| [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Orbit: intents → reduce → side effects |
+| [VpnScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnScreen.kt) | stateless Compose UI |
+| [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | сборка экрана и DI-графа |
+| [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки |
