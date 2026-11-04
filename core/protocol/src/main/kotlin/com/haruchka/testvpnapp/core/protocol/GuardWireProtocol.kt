@@ -8,7 +8,7 @@ object GuardWireProtocol {
     val MAGIC: ByteArray = "GUARDWIRE".toByteArray(Charsets.US_ASCII)
 
     /** Версия протокола. Несовпадение версий приводит к отказу сервера. */
-    const val VERSION: Int = 1
+    const val VERSION: Int = 2
 
     /** Размер заголовка кадра: тип (1 байт) + длина payload (2 байта). */
     const val FRAME_HEADER_SIZE: Int = 3

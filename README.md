@@ -4,25 +4,43 @@
 VPN-приложение: `VpnService`, TUN-интерфейс, foreground-сервис, собственный
 протокол поверх TCP, модульная архитектура и MVVM + Orbit MVI.
 
-> **Статус: демо.** GuardWire/1 — учебный протокол из этого репозитория, а не
-> промышленный стандарт. Приложение не шифрует трафик и не выполняет NAT,
-> поэтому не предназначено для реальной защиты соединения.
+> **Статус: демо.** GuardWire/2 — учебный протокол из этого репозитория, а не
+> промышленный стандарт. Трафик шифруется ECDH P-256 + AES-256-GCM, но схема
+> не проходила аудит. Для реального интернета нужен сервер с маршрутизацией:
+> в комплекте есть Linux TUN + NAT.
+
+Как перенести это в реальный проект — см. **[theory.md](theory.md)**.
 
 ## Быстрый старт
 
 ```bash
-# 1. поднять демо-сервер
-python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+# 0. один раз: venv и зависимости Python-серверов
+./tools/setup-python.sh
+
+# 1. поднять полноценный тестовый VPN-сервер (Linux, нужен root)
+sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo
+# если включён ufw: sudo ufw allow 8443/tcp
 
 # 2. собрать приложение
 ./gradlew :app:assembleDebug
 ```
 
-Затем в приложении: **host** `10.0.2.2`, **port** `8443`, **token** `demo` для
-эмулятора. Для физического устройства по USB выполните
-`adb reverse tcp:8443 tcp:8443` и укажите host `127.0.0.1`. Демо-сервер не
-маршрутизирует IP-пакеты, поэтому интернет через туннель не появится — это
-ожидаемо.
+Если `cryptography` уже установлен в системном Python, venv не обязателен:
+проверьте `python3 -c "import cryptography"` и запускайте через `python3`.
+Не используйте `pip install --break-system-packages` — лучше venv.
+
+Телефон и ПК должны быть в одной локальной сети. Сервер напечатает LAN-адрес
+компьютера — его и укажите в приложении вместе с портом `8443` и токеном
+`demo`.
+
+Если нужен только handshake и проверка кадров без маршрутизации в интернет:
+
+```bash
+.venv/bin/python tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+```
+
+Для эмулятора host — `10.0.2.2`. Для физического устройства по USB можно
+выполнить `adb reverse tcp:8443 tcp:8443` и указать host `127.0.0.1`.
 
 ---
 
@@ -43,13 +61,14 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 - Рабочий демонстрационный туннель: рукопожатие, передача IP-пакетов,
   keep-alive, статистика, корректное отключение.
 - Читаемая модульная архитектура, которую можно использовать как скелет.
-- Понятная спецификация GuardWire/1 и воспроизводимый демо-сервер.
+- Понятная спецификация GuardWire/2 и воспроизводимый демо-сервер.
 
 ### Не-цели
 
-- Продакшен-VPN и защита трафика.
-- Шифрование, аутентификация трафика, обфускация.
-- Полноценный tun2socks/NAT и реальный выход в интернет.
+- Продакшен-VPN и сертифицированная криптография.
+- Защита от всех активных атак и формальный аудит протокола.
+- Обфускация трафика.
+- Полноценный tun2socks на клиенте: NAT выполняет Linux-сервер.
 - IPv6, split tunneling, always-on VPN, DNS leak protection.
 - Публикация в Google Play.
 
@@ -108,7 +127,7 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 | FR-3 | Foreground-сервис с постоянным уведомлением | `GuardWireVpnService`, `startForeground`, канал `guardwire_vpn` |
 | FR-4 | Создание TUN с заданными параметрами | `VpnService.Builder`: `10.8.0.2/32`, `0.0.0.0/0`, DNS `1.1.1.1`, MTU 1400 |
 | FR-5 | Защита сокета туннеля от собственного TUN | `VpnService.protect(socket)` до `connect()` |
-| FR-6 | Рукопожатие GuardWire/1 | `GuardWireClient` + `GuardWireHandshakeCodec` |
+| FR-6 | Рукопожатие GuardWire/2 с PSK-аутентификацией | ECDH P-256 + HMAC-SHA256, `GuardWireClient` + `GuardWireHandshakeCodec` |
 | FR-7 | Двусторонняя передача IP-пакетов | `GuardWireTunnel`: TUN → DATA-кадры и DATA → TUN |
 | FR-8 | Keep-alive и обнаружение мёртвого соединения | KEEP_ALIVE каждый интервал, PING раз в два интервала, read timeout 4×интервала |
 | FR-9 | Статистика трафика | `TrafficMeter` → `VpnStateStore` → Orbit state |
@@ -117,6 +136,7 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 | FR-12 | Сохранение настроек сервера | `VpnSettingsRepository` на `SharedPreferences` |
 | FR-13 | Stateless Compose UI | `VpnScreen` принимает состояние и колбэки |
 | FR-14 | MVVM + Orbit | `VpnViewModel` с `intent` → `reduce` → `postSideEffect` |
+| FR-15 | Шифрование кадров | AES-256-GCM, случайный IV, тип кадра в AAD |
 
 ---
 
@@ -180,7 +200,7 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 | `:app` | Activity, тема, ручной DI-граф | Compose, Activity |
 | `:feature:vpn` | Экран, Orbit ViewModel, side effects | Compose, Orbit |
 | `:core:vpn` | `VpnService`, TUN-мост, контроллер, настройки | Android SDK |
-| `:core:protocol` | GuardWire/1: кадры, handshake, TCP-клиент | Kotlin/JVM |
+| `:core:protocol` | GuardWire/2: кадры, handshake, ECDH/AES, TCP-клиент | Kotlin/JVM |
 | `:core:model` | Модели состояния и конфигурации | Kotlin/JVM |
 
 ### 5.2. Правила зависимостей
@@ -215,9 +235,16 @@ VpnScreen (stateless Compose)
 
 ---
 
-## 6. Протокол GuardWire/1
+## 6. Протокол GuardWire/2
 
 Транспорт — TCP. Все числа big-endian.
+
+Схема:
+
+- эфемерный ECDH P-256 для получения общего секрета;
+- PSK-токен для аутентификации handshake (HMAC-SHA256);
+- HKDF-SHA256 для вывода AES-256 ключа;
+- AES-256-GCM для каждого кадра.
 
 ### 6.1. Рукопожатие
 
@@ -226,20 +253,59 @@ VpnScreen (stateless Compose)
 | Поле | Размер | Значение |
 |------|--------|----------|
 | magic | 9 | ASCII `GUARDWIRE` |
-| version | 1 | `1` |
-| token length | 2 | длина токена |
-| token | N | UTF-8 токен |
+| version | 1 | `2` |
 | mtu | 2 | MTU клиента |
+| clientNonce | 16 | случайный nonce |
+| clientPubLen | 2 | длина публичного ключа |
+| clientPub | N | эфемерный ECDH P-256 ключ (X.509 DER) |
+| proof | 32 | HMAC-SHA256(PSK, transcript) |
+
+`transcript` клиента:
+
+```
+magic || version || mtu || clientNonce || clientPubLen || clientPub
+```
 
 Сервер:
 
 | Поле | Размер | Значение |
 |------|--------|----------|
 | magic | 9 | ASCII `GUARDWIRE` |
-| version | 1 | `1` |
+| version | 1 | `2` |
 | status | 1 | `0` — успех, иначе отказ |
-| message length | 2 | длина сообщения |
+| messageLen | 2 | длина сообщения |
 | message | N | UTF-8 причина/приветствие |
+| serverNonce | 16 | случайный nonce |
+| serverPubLen | 2 | длина публичного ключа |
+| serverPub | N | эфемерный ECDH P-256 ключ |
+| proof | 32 | HMAC-SHA256(PSK, transcript) |
+
+`transcript` сервера:
+
+```
+magic || version || status ||
+clientNonce || clientPubLen || clientPub ||
+serverNonce || serverPubLen || serverPub
+```
+
+После успешного handshake обе стороны вычисляют:
+
+```
+shared = ECDH(ownPrivate, peerPublic)
+key    = HKDF-SHA256(
+    IKM  = shared,
+    salt = clientNonce || serverNonce,
+    info = "GuardWire/2 session key",
+    len  = 32
+)
+```
+
+Свойства:
+
+- токен **не передаётся** по сети — только HMAC-доказательство его знания;
+- эфемерные ECDH-ключи дают прямую секретность (forward secrecy);
+- неверный PSK или подмена ключей приводят к отказу handshake;
+- сообщение и статус отказа не считаются секретными.
 
 Таймауты:
 
@@ -250,11 +316,17 @@ VpnScreen (stateless Compose)
 ### 6.2. Кадры
 
 ```
-+--------+------------------+-----------------+
-| type   | payload length   | payload         |
-| 1 байт | 2 байта (BE)     | N байт          |
-+--------+------------------+-----------------+
++--------+------------------+-----------------------------+
+| type   | payload length   | encrypted payload           |
+| 1 байт | 2 байта (BE)     | IV (12) + ciphertext + tag  |
++--------+------------------+-----------------------------+
 ```
+
+- `encrypted payload = AES-256-GCM(key, iv, plaintext, aad = type)`;
+- IV — 12 случайных байт на каждый кадр;
+- tag — 16 байт (128 бит);
+- тип кадра передаётся в associated data, поэтому его подмена ломает GCM;
+- для пустого payload шифруется только tag, кадр остаётся валидным.
 
 | Тип | Код | Назначение |
 |-----|-----|------------|
@@ -269,9 +341,20 @@ VpnScreen (stateless Compose)
 - клиент отправляет KEEP_ALIVE каждый интервал;
 - каждый второй интервал отправляет PING;
 - сервер обязан ответить PONG;
-- при `DISCONNECT`, EOF или read timeout туннель считается завершённым;
+- при `DISCONNECT`, EOF, ошибке GCM или read timeout туннель завершается;
 - запись кадров синхронизирована, потому что DATA и keep-alive идут из разных
   корутин.
+
+### 6.3. Почему не чистый RSA
+
+RSA не используется для шифрования каждого пакета: это медленно, а размер
+блока ограничен ключом. «Чистый RSA» также не даёт аутентифицированного
+шифрования сам по себе.
+
+Возможная альтернатива — RSA-OAEP для транспорта AES-ключа, но тогда нужен
+стабильный публичный ключ сервера и его пиннинг в приложении. Для демо
+PSK-ECDH проще: общий секрет уже есть в настройках, файлы ключей не нужны,
+а эфемерный ECDH даёт forward secrecy.
 
 ---
 
@@ -335,7 +418,10 @@ VpnScreen (stateless Compose)
 - JDK 17;
 - Android SDK с `compileSdk 37`;
 - Android 7.0+ (`minSdk 24`);
-- Python 3 — только для демо-сервера.
+- Python 3 — для тестовых серверов;
+- Python-пакет `cryptography`; проще всего через `./tools/setup-python.sh`
+  (создаёт `.venv`), либо `sudo apt install python3-cryptography`;
+- Linux, root и `iptables` — только для полноценного сервера с NAT.
 
 ### Сборка
 
@@ -345,14 +431,70 @@ VpnScreen (stateless Compose)
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-### Демо-сервер
+### Полноценный тестовый сервер (Linux, TUN + NAT)
+
+Сервер создаёт TUN `guardwire0`, включает IPv4 forwarding и NAT через
+интерфейс default-маршрута. Пакеты из телефона попадают в TUN, ядро Linux
+маршрутизирует их в интернет, а ответы возвращаются на телефон.
+
+Трафик внутри TCP шифруется AES-256-GCM, а `--token` работает как PSK и по
+сети не передаётся.
 
 ```bash
-python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+sudo .venv/bin/python tools/guardwire-linux-server.py \
+    --host 0.0.0.0 \
+    --port 8443 \
+    --token demo
 ```
 
-Сервер выполняет handshake, читает кадры, отвечает на PING и пишет статистику.
-IP-пакеты он **не маршрутизирует**.
+Сервер напечатает LAN-адрес компьютера, например:
+
+```
+enp3s0: host=192.168.100.4  port=8443  (PSK задан)
+```
+
+Его нужно указать в приложении вместе с тем же PSK-токеном, что передан
+серверу через `--token`. Телефон и ПК должны быть в одной подсети.
+
+Что делает сервер:
+
+- создаёт TUN `10.8.0.1/24`, MTU 1400;
+- при необходимости включает `net.ipv4.ip_forward`;
+- добавляет `MASQUERADE` для `10.8.0.0/24` через LAN-интерфейс;
+- добавляет FORWARD-правила для трафика TUN ↔ LAN;
+- при `Ctrl+C` удаляет свои правила, TUN и возвращает прежний `ip_forward`;
+- принимает одного клиента за раз.
+
+Проверить план команд без выполнения:
+
+```bash
+python3 tools/guardwire-linux-server.py --dry-run
+```
+
+Если включён `ufw`, откройте порт:
+
+```bash
+sudo ufw allow 8443/tcp
+```
+
+Требуется `/dev/net/tun` и CAP_NET_ADMIN. На Ubuntu это означает запуск через
+`sudo`. Порт должен быть доступен с телефона в той же локальной сети.
+
+> Это тестовый сервер для доверенной локальной сети. Не выставляйте его в
+> интернет: протокол учебный и не проходил аудит, а PSK хранится в настройках
+> приложения. Трафик шифруется, но это не production-VPN.
+
+### Демо-сервер без маршрутизации
+
+Если нужен только handshake, зашифрованные кадры и проверка UI без реального
+интернета:
+
+```bash
+.venv/bin/python tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+```
+
+Сервер выполняет GuardWire/2 handshake, расшифровывает кадры, отвечает на PING
+и пишет статистику. IP-пакеты он **не маршрутизирует**.
 
 ### Эмулятор
 
@@ -370,9 +512,16 @@ adb reverse tcp:8443 tcp:8443
 
 В приложении: host `127.0.0.1`, port `8443`, token `demo`.
 
-> Во время активного туннеля маршрут `0.0.0.0/0` забирает весь трафик
-> устройства, а демо-сервер его отбрасывает. Интернет на телефоне пропадёт до
-> отключения VPN. Это ожидаемое поведение демо.
+### Физическое устройство по локальной сети
+
+1. Запустите полноценный сервер на ПК.
+2. Возьмите LAN-IP из его вывода, например `192.168.100.4`.
+3. В приложении укажите этот IP, порт `8443` и токен `demo`.
+4. Разрешите входящий TCP `8443` в firewall/ufw.
+
+> С демо-сервером без NAT интернет на телефоне пропадёт до отключения VPN:
+> маршрут `0.0.0.0/0` забирает трафик, а сервер его отбрасывает. С
+> полноценным Linux-сервером трафик идёт через ПК и NAT и интернет работает.
 
 ---
 
@@ -390,9 +539,11 @@ adb reverse tcp:8443 tcp:8443
 - пустой payload;
 - обрезанные данные;
 - неизвестный тип кадра;
-- рукопожатие: успех, отказ, чужая сигнатура;
+- рукопожатие: успех, отказ, неверный PSK;
+- ECDH P-256 + HKDF + AES-256-GCM: обмен ключами, шифрование кадров,
+  отказ при подмене типа кадра;
 - интеграционный тест клиента с локальным `ServerSocket`:
-  handshake → DATA → PING → PONG.
+  encrypted handshake → DATA → PING → PONG.
 
 ### Ручной чек-лист
 
@@ -412,12 +563,24 @@ adb reverse tcp:8443 tcp:8443
 - Устройство: Samsung SM-A525F, Android 14.
 - Пройдены permission-диалоги, подключение к демо-серверу, TUN, статистика,
   отключение и сценарий ошибки.
+- Linux-сервер: создание TUN, handshake, PING/PONG, прохождение ICMP-пакета
+  через TUN и корректный cleanup проверены в изолированном network namespace.
+- Полный LAN-сценарий с NAT не запускался автоматически: для него нужен
+  `sudo` и открытый входящий порт.
+- Проверена зашифрованная связка: Android-клиент ↔ Python demo-сервер
+  (ECDH + AES-GCM) по локальной сети.
+- Linux-сервер с шифрованием: handshake, зашифрованный ICMP через TUN,
+  правила NAT и cleanup проверены в network namespace.
 
 ---
 
 ## 11. Ограничения и безопасность
 
-- **Нет шифрования.** Токен — идентификатор, а не защита трафика.
+- **Криптография учебная.** ECDH + AES-GCM реализованы корректно по базовым
+  принципам, но протокол не проходил аудит; не используйте его для реальной
+  защиты данных.
+- **Один общий PSK.** Нет ротации ключей, отдельных учёток и отзыва доступа.
+  Токен `demo` годится только для теста; берите длинный случайный PSK.
 - **Нет tun2socks.** Клиент не разбирает TCP/UDP и не проксирует их в сокеты;
   сервер должен сам маршрутизировать IP-пакеты.
 - **Нет IPv6, split tunneling, always-on VPN, DNS leak protection.**
@@ -434,7 +597,8 @@ adb reverse tcp:8443 tcp:8443
 
 ## 12. Возможные улучшения
 
-- TLS или Noise-подобный handshake, шифрование payload.
+- Аудит GuardWire/2 и/или переход на TLS/Noise с проверенным стеком.
+- Ротация PSK, несколько пользователей и отзыв доступа.
 - Полноценный tun2socks с разбором TCP/UDP.
 - IPv6 и управление маршрутами.
 - Split tunneling и `addDisallowedApplication`.
@@ -455,9 +619,13 @@ adb reverse tcp:8443 tcp:8443
 | [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | фасад для UI: consent, запуск, остановка |
 | [VpnStateStore.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnStateStore.kt) | единый источник состояния |
 | [GuardWireClient.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireClient.kt) | TCP-подключение, `protect(socket)`, handshake |
+| [GuardWireCrypto.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireCrypto.kt) | ECDH, HKDF, HMAC, AES-GCM |
 | [GuardWireFrameCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireFrameCodec.kt) | формат кадров |
 | [GuardWireHandshakeCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireHandshakeCodec.kt) | формат рукопожатия |
 | [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Orbit: intents → reduce → side effects |
 | [VpnScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnScreen.kt) | stateless Compose UI |
 | [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | сборка экрана и DI-графа |
-| [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки |
+| [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки handshake и кадров |
+| [guardwire_crypto.py](tools/guardwire_crypto.py) | серверная и клиентская криптография GuardWire/2 |
+| [guardwire-linux-server.py](tools/guardwire-linux-server.py) | Linux TUN + NAT: реальный интернет через VPN |
+| [theory.md](theory.md) | пошаговый путь от демо к production-VPN |

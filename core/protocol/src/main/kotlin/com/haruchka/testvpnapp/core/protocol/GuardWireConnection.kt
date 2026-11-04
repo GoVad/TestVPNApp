@@ -10,52 +10,60 @@ import java.net.Socket
  *
  * Класс намеренно блокирующий: его вызывают из IO-корутин VPN-сервиса.
  * Запись синхронизирована, потому что keep-alive и данные отправляются
- * из разных корутин.
+ * из разных корутин. Payload кадров шифруется сессионным AES-GCM ключом.
  */
 class GuardWireConnection internal constructor(
     private val socket: Socket,
     private val input: DataInputStream,
     private val output: DataOutputStream,
+    private val session: GuardWireSession,
 ) : Closeable {
 
     private val writeLock = Any()
 
-    /** Отправляет один IP-пакет как DATA-кадр. */
+    /** Отправляет один IP-пакет как зашифрованный DATA-кадр. */
     fun sendData(packet: ByteArray, length: Int) {
         require(length in 0..packet.size) { "Некорректная длина пакета: $length" }
-        writeFrame(typeCode = GuardWireFrameType.DATA.code, payload = packet, length = length)
+        val payload = if (length == packet.size) packet else packet.copyOf(length)
+        writeEncryptedFrame(GuardWireFrameType.DATA.code, payload)
     }
 
     fun sendKeepAlive() {
-        writeFrame(typeCode = GuardWireFrameType.KEEP_ALIVE.code, payload = EMPTY, length = 0)
+        writeEncryptedFrame(GuardWireFrameType.KEEP_ALIVE.code, EMPTY)
     }
 
     fun sendPing() {
-        writeFrame(typeCode = GuardWireFrameType.PING.code, payload = EMPTY, length = 0)
+        writeEncryptedFrame(GuardWireFrameType.PING.code, EMPTY)
     }
 
     fun sendPong() {
-        writeFrame(typeCode = GuardWireFrameType.PONG.code, payload = EMPTY, length = 0)
+        writeEncryptedFrame(GuardWireFrameType.PONG.code, EMPTY)
     }
 
     fun sendDisconnect() {
-        writeFrame(typeCode = GuardWireFrameType.DISCONNECT.code, payload = EMPTY, length = 0)
+        writeEncryptedFrame(GuardWireFrameType.DISCONNECT.code, EMPTY)
     }
 
-    /** Блокирующее чтение следующего кадра. Бросает [java.io.EOFException] при EOF. */
-    fun receive(): GuardWireFrame =
-        GuardWireFrameCodec.read(input)
+    /** Блокирующее чтение и расшифровка следующего кадра. */
+    fun receive(): GuardWireFrame {
+        val frame = GuardWireFrameCodec.read(input)
             ?: throw GuardWireException("Сервер закрыл GuardWire-соединение")
+        return GuardWireFrame(
+            type = frame.type,
+            payload = session.decrypt(frame.type.code, frame.payload),
+        )
+    }
 
     override fun close() {
         runCatching { socket.close() }
     }
 
-    private fun writeFrame(typeCode: Int, payload: ByteArray, length: Int) {
+    private fun writeEncryptedFrame(typeCode: Int, payload: ByteArray) {
+        val encrypted = session.encrypt(typeCode, payload)
         synchronized(writeLock) {
             output.writeByte(typeCode)
-            output.writeShort(length)
-            output.write(payload, 0, length)
+            output.writeShort(encrypted.size)
+            output.write(encrypted)
             output.flush()
         }
     }

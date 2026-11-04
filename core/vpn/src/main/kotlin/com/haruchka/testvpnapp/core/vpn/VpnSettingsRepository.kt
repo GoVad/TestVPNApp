@@ -6,8 +6,8 @@ import com.haruchka.testvpnapp.core.model.VpnServerConfig
 /**
  * Простое хранилище последних настроек сервера.
  *
- * В демо токен лежит в обычных SharedPreferences. В реальном приложении его
- * нужно хранить через Android Keystore / EncryptedSharedPreferences.
+ * В демо PSK-токен лежит в обычных SharedPreferences. В реальном приложении
+ * его нужно хранить через Android Keystore / EncryptedSharedPreferences.
  */
 class VpnSettingsRepository(context: Context) {
 

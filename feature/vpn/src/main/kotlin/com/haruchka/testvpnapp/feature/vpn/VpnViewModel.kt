@@ -155,6 +155,7 @@ class VpnViewModel(
         val error = when {
             host.isEmpty() -> "Укажите адрес GuardWire-сервера"
             port == null || port !in 1..65_535 -> "Порт должен быть числом от 1 до 65535"
+            state.token.isBlank() -> "Укажите PSK-токен: он нужен для шифрования"
             else -> null
         }
 

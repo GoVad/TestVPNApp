@@ -3,9 +3,9 @@
 ## Что это за репозиторий
 
 `GuardWire VPN` — учебное Android-приложение, демонстрирующее собственный VPN-клиент:
-`VpnService` + TUN, foreground-сервис, протокол GuardWire/1, модульная архитектура и MVVM + Orbit MVI.
+`VpnService` + TUN, foreground-сервис, протокол GuardWire/2, модульная архитектура и MVVM + Orbit MVI.
 
-Человеческая спецификация: `README.md`.
+Спецификация: `README.md`; путь к production: `theory.md`.
 
 ## Стек и окружение
 
@@ -21,7 +21,9 @@
 - Unit-тесты протокола: `./gradlew :core:protocol:test`
 - Lint: `./gradlew :app:lintDebug`
 - Установка: `adb install -r app/build/outputs/apk/debug/app-debug.apk`
-- Демо-сервер: `python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo`
+- Демо-сервер без NAT: `.venv/bin/python tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo`
+- Полный сервер с TUN+NAT (Linux, root): `sudo .venv/bin/python tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo`
+- Python-серверы: `./tools/setup-python.sh` создаёт `.venv` с `cryptography`.
 - Для физического устройства по USB: `adb reverse tcp:8443 tcp:8443`, затем host `127.0.0.1`.
 
 ## Архитектура
@@ -38,16 +40,17 @@
 - Сокет туннеля обязан проходить через `VpnService.protect()` **до** `connect()`, иначе трафик попадёт в собственный TUN.
 - `GuardWireVpnService` обязан вызывать `startForeground` в `onCreate`/`onStartCommand`; для API 34+ используется тип `specialUse` и permission `FOREGROUND_SERVICE_SPECIAL_USE`.
 - Сервис объявлен с `android:permission="android.permission.BIND_VPN_SERVICE"` и `exported="true"`, чтобы система могла к нему привязаться.
-- Запись GuardWire-кадров синхронизирована: DATA и keep-alive/PING могут идти из разных корутин.
-- При изменении формата кадров/рукопожатия обновляй `GuardWireCodecTest` и `GuardWireClientTest`.
+- Запись GuardWire-кадров синхронизирована; payload шифруется AES-256-GCM, тип кадра идёт в AAD, IV случайный на кадр.
+- Токен — это PSK для HMAC-аутентификации handshake; не передавай и не логируй его.
+- При изменении handshake/криптографии синхронно правь Kotlin и Python-серверы, обновляй `GuardWireCodecTest`, `GuardWireCryptoTest`, `GuardWireClientTest`.
 - При отмене подключения проверяй `ensureActive()` после блокирующих IO-вызовов и закрывай сокет/TUN.
 - UI-тексты и комментарии — на русском; имена кода — на английском.
 
 ## Безопасность
 
 - Не коммить `local.properties`, `.idea/`, `build/`, `*.jks`, `*.keystore` и файлы подписи.
-- GuardWire — учебный протокол без шифрования. Не выдавай его за production-VPN.
-- Токен в SharedPreferences — осознанное упрощение демо; для реального приложения используй Keystore.
+- GuardWire/2 использует ECDH P-256 + AES-256-GCM, но это учебная схема без аудита. Не выдавай её за production-VPN.
+- PSK-токен в SharedPreferences — осознанное упрощение демо; для реального приложения используй Keystore.
 
 ## Проверки перед завершением задачи
 

@@ -26,6 +26,10 @@ class GuardWireClient(
      * рукопожатие не прошло или версия протокола не совпала.
      */
     fun connect(): GuardWireConnection {
+        if (config.token.isEmpty()) {
+            throw GuardWireException("PSK-токен не задан: без него GuardWire/2 не запускается")
+        }
+
         val socket = Socket()
         try {
             socket.tcpNoDelay = true
@@ -43,21 +47,27 @@ class GuardWireClient(
             val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
             val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
 
+            val handshake = GuardWireCrypto.createClientHandshake(
+                token = config.token,
+                mtu = config.mtu,
+            )
             GuardWireHandshakeCodec.writeRequest(
                 output = output,
-                request = GuardWireHandshakeRequest(token = config.token, mtu = config.mtu),
+                request = GuardWireCrypto.createClientRequest(handshake),
             )
             val response = GuardWireHandshakeCodec.readResponse(input)
-            if (!response.accepted) {
-                val reason = response.message.ifBlank { "без описания" }
-                throw GuardWireException("Сервер отклонил подключение: $reason")
-            }
+
+            val session = GuardWireCrypto.establishClientSession(
+                token = config.token,
+                handshake = handshake,
+                response = response,
+            )
 
             // Если сервер молчит дольше четырёх интервалов keep-alive, считаем туннель мёртвым.
             val readTimeoutMs = config.keepAliveSeconds.coerceAtLeast(5) * 4 * 1_000
             socket.soTimeout = readTimeoutMs
 
-            return GuardWireConnection(socket, input, output)
+            return GuardWireConnection(socket, input, output, session)
         } catch (e: Exception) {
             runCatching { socket.close() }
             if (e is GuardWireException) throw e

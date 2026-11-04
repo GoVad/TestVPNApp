@@ -104,7 +104,7 @@ fun VpnScreen(
         item { AboutCard() }
         item {
             Text(
-                text = "Учебный проект · GuardWire/1",
+                text = "Учебный проект · GuardWire/2",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -334,7 +334,7 @@ private fun EndpointCard(
                 OutlinedTextField(
                     value = state.token,
                     onValueChange = onTokenChange,
-                    label = { Text("Токен") },
+                    label = { Text("PSK-токен") },
                     placeholder = { Text("demo") },
                     singleLine = true,
                     enabled = state.fieldsEnabled,
@@ -367,8 +367,9 @@ private fun EndpointCard(
             }
 
             Text(
-                text = "Хост 10.0.2.2 из эмулятора указывает на компьютер, " +
-                    "где запущен GuardWire-сервер.",
+                text = "Токен — общий PSK для аутентификации handshake. Он не " +
+                    "передаётся по сети. Хост 10.0.2.2 из эмулятора указывает " +
+                    "на компьютер с GuardWire-сервером.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -542,12 +543,13 @@ private fun AboutCard() {
             )
             Text(
                 text = "IP-пакеты из TUN упаковываются в кадры GuardWire и уходят " +
-                    "по TCP. Ответы сервера записываются обратно в TUN.",
+                    "по TCP. Кадры шифруются AES-256-GCM, а ключ выводится из " +
+                    "эфемерного ECDH P-256. Ответы сервера пишутся обратно в TUN.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                text = "Демо не делает NAT/tun2socks: для реального интернета нужен " +
-                    "GuardWire-сервер с маршрутизацией пакетов.",
+                text = "Клиент не делает NAT/tun2socks: интернет появится только с сервером, " +
+                    "который маршрутизирует пакеты (например, guardwire-linux-server.py).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
