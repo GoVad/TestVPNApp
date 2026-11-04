@@ -216,8 +216,8 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 | Модуль | Назначение | Технологии |
 |--------|------------|------------|
 | `:app` | Composition root: `@HiltAndroidApp`, Activity, тема | Compose, Hilt |
-| `:feature:vpn` | Экран, Orbit ViewModel, side effects; зависит только от контрактов | Compose, Orbit, Hilt |
-| `:core:domain` | Контракты и доменные модели: `VpnSession`, `AuthService`, stores, `WireGuardEngine` | Kotlin/JVM, coroutines |
+| `:feature:vpn` | Экран, Orbit ViewModel, side effects; зависит только от контрактов и use case-ов | Compose, Orbit, Hilt |
+| `:core:domain` | Контракты, доменные модели и use case-и: `VpnSession`, `AuthService`, stores, `WireGuardEngine` | Kotlin/JVM, coroutines |
 | `:core:data` | DataStore + Keystore, auth HTTP-клиент, реализации состояния/логов | Android, DataStore, Hilt |
 | `:core:vpn` | `VpnService`, GuardWire-туннель, WireGuard-контроллер, уведомления | Android SDK, WireGuard, Hilt |
 | `:core:protocol` | GuardWire/2: кадры, handshake, ECDH/AES, TCP-клиент | Kotlin/JVM |
@@ -242,7 +242,7 @@ GuardWireVpnService / WireGuardController
 VpnStateStore / VpnLogStore (Hilt @Singleton, :core:data)
         │
         ▼
-VpnController.state
+VpnConnectionUseCase / VpnLogsUseCase
         │
         ▼
 VpnViewModel (Hilt + Orbit container)
@@ -251,8 +251,8 @@ VpnViewModel (Hilt + Orbit container)
 VpnScreen (stateless Compose)
 ```
 
-- UI зависит от контрактов: `VpnSession`, `AuthService`,
-  `VpnSettingsStore`, `VpnLogRepository`, `WireGuardProfileParser`.
+- `VpnViewModel` зависит только от use case-ов, а не от store/repository/service.
+- Use case-и зависят от контрактов домена, а не от Hilt/Android.
 - Сервисы зависят от `VpnStateRepository`/`VpnLogRepository`, а не от
   конкретных store-классов.
 - Реализации: `VpnController` (`:core:vpn`), `AuthRepository`,
@@ -261,8 +261,28 @@ VpnScreen (stateless Compose)
 - `VpnViewModel` создаётся через `hiltViewModel()`.
 - UI не пишет в state напрямую.
 - Permission-диалоги и snackbar — только через `VpnSideEffect`.
+- Проверки `VpnService.prepare()` и разрешения на уведомления остаются в
+  ViewModel: это платформенные API, а не данные и не VPN-сервис.
 
-### 5.4. Hilt
+### 5.4. Use cases
+
+Сценарии лежат в `:core:domain/usecase` и не знают про Android, Hilt и Compose.
+
+| Use case | Что делает |
+|----------|------------|
+| `LoadVpnSettingsUseCase` | читает настройки, проверяет срок токена, разбирает WireGuard-профиль |
+| `LoginUseCase` | логин, сохранение токена и WireGuard-конфига, выбор актуального профиля |
+| `LogoutUseCase` | отключение туннеля и очистка auth/WireGuard-данных |
+| `VpnConnectionUseCase` | подключение в обоих режимах, отключение, наблюдение за состоянием |
+| `ValidateGuardWireConfigUseCase` | проверка host/port/PSK и сборка `VpnServerConfig` |
+| `SaveWireGuardConfigUseCase` | проверка конфига, построение профиля и сохранение |
+| `VpnSettingsUseCase` | сохранение режима и GuardWire-параметров, удаление WireGuard-конфига |
+| `VpnLogsUseCase` | наблюдение за журналом, запись и очистка |
+
+ViewModel вызывает сценарии, а Hilt-модуль `VpnUseCaseModule` в
+`:feature:vpn` собирает их из контрактов домена.
+
+### 5.5. Hilt
 
 - `GuardWireApp` помечен `@HiltAndroidApp`.
 - `MainActivity` и `GuardWireVpnService` — `@AndroidEntryPoint`.
@@ -272,11 +292,12 @@ VpnScreen (stateless Compose)
 - `app`, `core:data`, `core:vpn`, `feature:vpn` используют Hilt Gradle Plugin + KSP.
 - `DataBindingsModule` (`:core:data`) и `VpnBindingsModule` (`:core:vpn`)
   связывают контракты домена с реализациями (`@Binds`).
+- `VpnUseCaseModule` (`:feature:vpn`) собирает use case-и из контрактов.
 - Для AGP 9 built-in Kotlin в `gradle.properties` стоит
   `android.disallowKotlinSourceSets=false` — KSP добавляет сгенерированные
   исходники через `kotlin.sourceSets`.
 
-### 5.5. Startup-гейт
+### 5.6. Startup-гейт
 
 При запуске нельзя сразу показывать логин: DataStore/Keystore ещё читают
 сессию и WireGuard-профиль, иначе получается «рваный» переход
@@ -294,7 +315,7 @@ MainActivity
 
 `StartupScreen` — кастомный второй splash после системного.
 
-### 5.6. Auth-flow
+### 5.7. Auth-flow
 
 ```
 LoginScreen
@@ -711,11 +732,12 @@ adb reverse tcp:8443 tcp:8443
 ### Автоматические тесты
 
 ```bash
-./gradlew :core:protocol:test
+./gradlew :core:domain:test :core:protocol:test
 ```
 
 Покрыто:
 
+- use case-и: валидация GuardWire-конфига и загрузка сессии;
 - кодирование/декодирование кадров;
 - пустой payload;
 - обрезанные данные;
@@ -820,6 +842,11 @@ adb reverse tcp:8443 tcp:8443
 | [AuthService.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/AuthService.kt) | контракт auth/control-plane |
 | [VpnSettingsStore.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/VpnSettingsStore.kt) | контракт хранения настроек |
 | [VpnController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/VpnController.kt) | реализация фасада: запуск, остановка |
+| [LoadVpnSettingsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoadVpnSettingsUseCase.kt) | загрузка настроек и проверка сессии |
+| [LoginUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoginUseCase.kt) | вход и сохранение выданного профиля |
+| [VpnConnectionUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnConnectionUseCase.kt) | подключение/отключение и состояние |
+| [VpnLogsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnLogsUseCase.kt) | журнал приложения |
+| [VpnUseCaseModule.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/di/VpnUseCaseModule.kt) | Hilt-сборка use case-ов |
 | [VpnBindingsModule.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/di/VpnBindingsModule.kt) | Hilt @Binds платформенных реализаций |
 | [DataBindingsModule.kt](core/data/src/main/kotlin/com/haruchka/testvpnapp/core/data/di/DataBindingsModule.kt) | Hilt @Binds data-слоя |
 | [WireGuardController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/WireGuardController.kt) | реальный режим на библиотеке WireGuard |
@@ -831,7 +858,7 @@ adb reverse tcp:8443 tcp:8443
 | [GuardWireCrypto.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireCrypto.kt) | ECDH, HKDF, HMAC, AES-GCM |
 | [GuardWireFrameCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireFrameCodec.kt) | формат кадров |
 | [GuardWireHandshakeCodec.kt](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol/GuardWireHandshakeCodec.kt) | формат рукопожатия |
-| [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Hilt + Orbit: intents → reduce → side effects |
+| [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) | Hilt + Orbit: intents → use cases → reduce → side effects |
 | [LoginScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/LoginScreen.kt) | вход по логину/паролю |
 | [VpnScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnScreen.kt) | stateless Compose UI |
 | [VpnLogsScreen.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnLogsScreen.kt) | отдельный экран логов |

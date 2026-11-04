@@ -17,7 +17,7 @@
 
 ## Команды
 
-- Сборка/тесты/lint: `./gradlew :app:assembleDebug :core:protocol:test :app:lintDebug`
+- Сборка/тесты/lint: `./gradlew :app:assembleDebug :core:domain:test :core:protocol:test :app:lintDebug`
 - Установка: `adb install -r app/build/outputs/apk/debug/app-debug.apk`
 - Auth: `python3 tools/guardwire-auth-server.py --port 8090 --user demo:demo --disable-wireguard` (для WireGuard — sudo + `--wg-interface wg0`).
 - Демо-сервер без NAT: `python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo`
@@ -32,9 +32,11 @@
 - `core:data` — DataStore/Keystore, auth-клиент и реализации store-контрактов.
 - `core:vpn` — только платформа: `VpnService`, TUN, WireGuard, уведомления.
 - Не протаскивай Android/Compose/`VpnService` в нижние слои и не ломай направление зависимостей.
-- Поток состояния: `GuardWireVpnService` / `WireGuardController` → Hilt `VpnStateStore` → `VpnController.state` → `VpnViewModel` → Compose.
+- Поток состояния: `GuardWireVpnService` / `WireGuardController` → Hilt `VpnStateStore` → `VpnConnectionUseCase.observeState()` → `VpnViewModel` → Compose.
 - Permission-диалоги, snackbar и навигационные события — только через `VpnSideEffect`.
-- UI зависит от контрактов (`VpnSession`, `AuthService`, `VpnSettingsStore`), Hilt связывает их через `@Binds`; Compose stateless, логика в ViewModel.
+- UI зависит от контрактов (`VpnSession`, `AuthService`, `VpnSettingsStore`) и use case-ов, Hilt связывает реализации через `@Binds`; Compose stateless, логика в ViewModel.
+- `VpnViewModel` не вызывает store/repository/service напрямую: только use case-и из `core:domain/usecase`.
+- Use case-и собираются Hilt-модулем `VpnUseCaseModule` в `:feature:vpn`; домен остаётся без Hilt/Android.
 - Новые модули/фичи подключай через `settings.gradle.kts` и `gradle/libs.versions.toml`.
 
 ## Инварианты
@@ -58,7 +60,7 @@
 
 ## Проверки перед завершением задачи
 
-1. `./gradlew :core:protocol:test :app:assembleDebug`
+1. `./gradlew :core:domain:test :core:protocol:test :app:assembleDebug`
 2. При изменениях UI/сервиса — `./gradlew :app:lintDebug`
 3. При изменениях permission/FGS/VPN — ручная проверка на API 34+.
 4. Убедись, что не появились новые untracked-артефакты сборки и IDE.
