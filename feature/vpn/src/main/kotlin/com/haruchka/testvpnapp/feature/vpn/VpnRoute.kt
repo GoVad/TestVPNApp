@@ -6,6 +6,13 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -65,33 +72,11 @@ fun VpnRoute(
         }
     }
 
-    if (state.startupState == StartupState.CHECKING) {
-        StartupScreen(modifier = modifier.fillMaxSize())
-        return
-    }
-
-    if (!state.isLoggedIn) {
-        LoginScreen(
-            initialBaseUrl = state.authBaseUrl,
-            isLoading = state.isLoggingIn,
-            error = state.authError,
-            onInputChanged = { viewModel.onAuthInputChanged() },
-            onLogin = { baseUrl, username, password ->
-                viewModel.onLogin(baseUrl, username, password)
-            },
-            modifier = modifier.fillMaxSize(),
-        )
-        return
-    }
-
-    if (showLogs) {
-        VpnLogsScreen(
-            logs = state.logs,
-            onClose = { showLogs = false },
-            onClear = { viewModel.onLogsCleared() },
-            modifier = modifier.fillMaxSize(),
-        )
-        return
+    val destination = when {
+        state.startupState == StartupState.CHECKING -> VpnDestination.Startup
+        !state.isLoggedIn -> VpnDestination.Login
+        showLogs -> VpnDestination.Logs
+        else -> VpnDestination.Main
     }
 
     Scaffold(
@@ -99,21 +84,72 @@ fun VpnRoute(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        VpnScreen(
-            state = state,
-            onConnect = { viewModel.onConnectClicked() },
-            onDisconnect = { viewModel.onDisconnectClicked() },
-            onModeChange = { viewModel.onModeChanged(it) },
-            onShowLogs = { showLogs = true },
-            onLogout = { viewModel.onLogout() },
-            username = state.username,
-            onWireGuardConfigRequested = { viewModel.onWireGuardConfigRequested() },
-            onWireGuardConfigCleared = { viewModel.onWireGuardConfigCleared() },
-            onHostChange = { viewModel.onHostChanged(it) },
-            onPortChange = { viewModel.onPortChanged(it) },
-            onTokenChange = { viewModel.onTokenChanged(it) },
-            onOpenVpnSettings = { viewModel.onOpenVpnSettings() },
-            modifier = Modifier.padding(innerPadding),
-        )
+        AnimatedContent(
+            targetState = destination,
+            transitionSpec = {
+                val forward = targetState.ordinal >= initialState.ordinal
+                (
+                    slideInHorizontally(
+                        animationSpec = tween(260),
+                        initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
+                    ) + fadeIn(animationSpec = tween(220))
+                    ).togetherWith(
+                    slideOutHorizontally(
+                        animationSpec = tween(260),
+                        targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
+                    ) + fadeOut(animationSpec = tween(180)),
+                )
+            },
+            label = "vpn-navigation",
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) { target ->
+            when (target) {
+                VpnDestination.Startup -> StartupScreen(modifier = Modifier.fillMaxSize())
+
+                VpnDestination.Login -> LoginScreen(
+                    initialBaseUrl = state.authBaseUrl,
+                    isLoading = state.isLoggingIn,
+                    error = state.authError,
+                    onInputChanged = { viewModel.onAuthInputChanged() },
+                    onLogin = { baseUrl, username, password ->
+                        viewModel.onLogin(baseUrl, username, password)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                VpnDestination.Logs -> VpnLogsScreen(
+                    logs = state.logs,
+                    onClose = { showLogs = false },
+                    onClear = { viewModel.onLogsCleared() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                VpnDestination.Main -> VpnScreen(
+                    state = state,
+                    onConnect = { viewModel.onConnectClicked() },
+                    onDisconnect = { viewModel.onDisconnectClicked() },
+                    onModeChange = { viewModel.onModeChanged(it) },
+                    onShowLogs = { showLogs = true },
+                    onLogout = { viewModel.onLogout() },
+                    username = state.username,
+                    onWireGuardConfigRequested = { viewModel.onWireGuardConfigRequested() },
+                    onWireGuardConfigCleared = { viewModel.onWireGuardConfigCleared() },
+                    onHostChange = { viewModel.onHostChanged(it) },
+                    onPortChange = { viewModel.onPortChanged(it) },
+                    onTokenChange = { viewModel.onTokenChanged(it) },
+                    onOpenVpnSettings = { viewModel.onOpenVpnSettings() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
     }
+}
+
+private enum class VpnDestination {
+    Startup,
+    Login,
+    Main,
+    Logs,
 }

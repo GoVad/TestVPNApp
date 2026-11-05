@@ -29,6 +29,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.orbitmvi.orbit.OrbitContainer
@@ -112,6 +113,8 @@ class VpnViewModel @Inject constructor(
 
             logs.append(appContext.getString(R.string.vm_ready))
 
+            // Даём второму splash-экрану побыть видимым, а не мигнуть на один кадр.
+            delay(STARTUP_MIN_DURATION_MS)
             reduce { state.copy(isLoading = false, startupState = StartupState.READY) }
 
             coroutineScope {
@@ -471,5 +474,9 @@ class VpnViewModel @Inject constructor(
     private sealed interface PendingConnection {
         data class GuardWire(val config: VpnServerConfig) : PendingConnection
         data class WireGuard(val configText: String) : PendingConnection
+    }
+
+    private companion object {
+        const val STARTUP_MIN_DURATION_MS = 2_000L
     }
 }
