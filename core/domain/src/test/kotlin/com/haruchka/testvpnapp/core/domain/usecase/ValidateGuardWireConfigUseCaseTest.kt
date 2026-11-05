@@ -1,7 +1,6 @@
 package com.haruchka.testvpnapp.core.domain.usecase
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,8 +23,8 @@ class ValidateGuardWireConfigUseCaseTest {
 
         assertTrue(result.isFailure)
         assertEquals(
-            "Порт должен быть числом от 1 до 65535",
-            result.exceptionOrNull()?.message,
+            GuardWireConfigError.PORT_INVALID,
+            (result.exceptionOrNull() as GuardWireConfigException).reason,
         )
     }
 
@@ -34,6 +33,9 @@ class ValidateGuardWireConfigUseCaseTest {
         val result = useCase("vpn.example", "8443", "   ")
 
         assertTrue(result.isFailure)
-        assertFalse(result.exceptionOrNull()?.message.isNullOrBlank())
+        assertEquals(
+            GuardWireConfigError.TOKEN_EMPTY,
+            (result.exceptionOrNull() as GuardWireConfigException).reason,
+        )
     }
 }

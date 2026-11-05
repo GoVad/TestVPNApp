@@ -27,7 +27,7 @@ class GuardWireClient(
      */
     fun connect(): GuardWireConnection {
         if (config.token.isEmpty()) {
-            throw GuardWireException("PSK-токен не задан: без него GuardWire/2 не запускается")
+            throw GuardWireException("PSK token is not set: GuardWire/2 cannot start without it")
         }
 
         val socket = Socket()
@@ -35,7 +35,7 @@ class GuardWireClient(
             socket.tcpNoDelay = true
 
             if (!protectSocket(socket)) {
-                throw GuardWireException("VpnService.protect() не смог защитить сокет туннеля")
+                throw GuardWireException("VpnService.protect() failed to protect the tunnel socket")
             }
 
             socket.connect(
@@ -73,14 +73,14 @@ class GuardWireClient(
             if (e is GuardWireException) throw e
 
             val reason = when (e) {
-                is java.net.ConnectException -> "сервер недоступен (connection refused)"
-                is java.net.UnknownHostException -> "не удалось разрешить имя хоста"
+                is java.net.ConnectException -> "server unavailable (connection refused)"
+                is java.net.UnknownHostException -> "failed to resolve host name"
                 is java.net.SocketTimeoutException ->
-                    if (socket.isConnected) "сервер не ответил на рукопожатие" else "таймаут подключения"
-                else -> e.message ?: "неизвестная ошибка"
+                    if (socket.isConnected) "server did not respond to handshake" else "connection timeout"
+                else -> e.message ?: "unknown error"
             }
             throw GuardWireException(
-                message = "Не удалось подключиться к ${config.endpoint}: $reason",
+                message = "Failed to connect to ${config.endpoint}: $reason",
                 cause = e,
             )
         }

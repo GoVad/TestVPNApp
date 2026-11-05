@@ -1,5 +1,6 @@
 package com.haruchka.testvpnapp.core.vpn
 
+import android.content.Context
 import android.os.ParcelFileDescriptor
 import com.haruchka.testvpnapp.core.model.VpnTrafficStats
 import com.haruchka.testvpnapp.core.protocol.GuardWireConnection
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * отвечают за keep-alive и публикацию счётчиков.
  */
 internal class GuardWireTunnel(
+    private val context: Context,
     private val scope: CoroutineScope,
     private val descriptor: ParcelFileDescriptor,
     private val connection: GuardWireConnection,
@@ -90,7 +92,7 @@ internal class GuardWireTunnel(
                     -> Unit
 
                     GuardWireFrameType.DISCONNECT ->
-                        throw GuardWireException("Сервер закрыл туннель")
+                        throw GuardWireException(context.getString(R.string.error_guardwire_server_closed))
                 }
             }
         }
@@ -110,7 +112,7 @@ internal class GuardWireTunnel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (!closed) fail(e.message ?: "Ошибка keep-alive")
+            if (!closed) fail(e.message ?: context.getString(R.string.log_guardwire_keepalive_error))
         }
     }
 
@@ -125,7 +127,7 @@ internal class GuardWireTunnel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (!closed) fail(e.message ?: "Ошибка счётчиков трафика")
+            if (!closed) fail(e.message ?: context.getString(R.string.log_guardwire_stats_error))
         }
     }
 
@@ -133,11 +135,11 @@ internal class GuardWireTunnel(
         val job = scope.launch {
             try {
                 block()
-                if (!closed) fail("$name остановлен")
+                if (!closed) fail(context.getString(R.string.log_guardwire_pump_stopped, name))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!closed) fail(e.message ?: "$name завершился с ошибкой")
+                if (!closed) fail(e.message ?: context.getString(R.string.log_guardwire_pump_failed, name))
             }
         }
         jobs += job

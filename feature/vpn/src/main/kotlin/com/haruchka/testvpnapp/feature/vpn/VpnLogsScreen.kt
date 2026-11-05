@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.haruchka.testvpnapp.core.model.VpnLogEntry
@@ -51,7 +52,7 @@ fun VpnLogsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Логи",
+                    text = stringResource(R.string.logs_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -59,17 +60,17 @@ fun VpnLogsScreen(
                     onClick = onClear,
                     enabled = logs.isNotEmpty(),
                 ) {
-                    Text("Очистить")
+                    Text(stringResource(R.string.logs_clear))
                 }
                 TextButton(onClick = onClose) {
-                    Text("Закрыть")
+                    Text(stringResource(R.string.logs_close))
                 }
             }
             HorizontalDivider()
 
             if (logs.isEmpty()) {
                 Text(
-                    text = "Событий пока нет",
+                    text = stringResource(R.string.logs_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(20.dp),

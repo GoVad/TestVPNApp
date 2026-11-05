@@ -8,6 +8,11 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import com.haruchka.testvpnapp.core.domain.AuthSessionExpiredException
+import com.haruchka.testvpnapp.core.domain.usecase.GuardWireConfigError
+import com.haruchka.testvpnapp.core.domain.usecase.GuardWireConfigException
+import com.haruchka.testvpnapp.core.domain.usecase.LoginValidationException
+import com.haruchka.testvpnapp.core.domain.usecase.SessionStorageException
+import com.haruchka.testvpnapp.core.domain.usecase.WireGuardStorageException
 import com.haruchka.testvpnapp.core.domain.usecase.EnsureAuthSessionUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoadVpnSettingsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoginUseCase
@@ -54,7 +59,7 @@ class VpnViewModel @Inject constructor(
     override val container: OrbitContainer<VpnUiState, VpnUiState, VpnSideEffect> =
         orbitContainer(initialState = VpnUiState()) {
             val loaded = loadVpnSettings()
-                .onFailure { logs.append("Не удалось загрузить настройки: ${it.message}") }
+                .onFailure { logs.append(appContext.getString(R.string.vm_settings_load_failed, it.message ?: "?")) }
                 .getOrNull()
 
             if (loaded != null) {
@@ -71,19 +76,22 @@ class VpnViewModel @Inject constructor(
                         accessToken = session.accessToken
                         username = session.username
                         isLoggedIn = true
-                        logs.append("Сессия продлена без повторного входа")
+                        logs.append(appContext.getString(R.string.vm_session_refreshed))
                     } else if (restored.exceptionOrNull() is AuthSessionExpiredException) {
                         settings.clearAuth()
-                        logs.append("Сессия истекла, войдите заново")
+                        logs.append(appContext.getString(R.string.vm_session_expired))
                     } else {
                         logs.append(
-                            "Не удалось продлить сессию: " +
-                                (restored.exceptionOrNull()?.message ?: "нет сети"),
+                            appContext.getString(
+                                R.string.vm_session_refresh_failed,
+                                restored.exceptionOrNull()?.message
+                                    ?: appContext.getString(R.string.vm_no_network),
+                            ),
                         )
                     }
                 } else if (!isLoggedIn && loaded.authToken != null) {
                     settings.clearAuth()
-                    logs.append("Сессия истекла, войдите заново")
+                    logs.append(appContext.getString(R.string.vm_session_expired))
                 }
 
                 reduce {
@@ -102,7 +110,7 @@ class VpnViewModel @Inject constructor(
                 }
             }
 
-            logs.append("Готов к подключению")
+            logs.append(appContext.getString(R.string.vm_ready))
 
             reduce { state.copy(isLoading = false, startupState = StartupState.READY) }
 
@@ -133,7 +141,7 @@ class VpnViewModel @Inject constructor(
     fun onConnectClicked() = intent {
         if (state.isActive || state.isLoading) return@intent
         if (!state.isLoggedIn) {
-            postSideEffect(VpnSideEffect.ShowMessage("Сначала войдите в аккаунт"))
+            postSideEffect(VpnSideEffect.ShowMessage(appContext.getString(R.string.vm_login_required)))
             return@intent
         }
 
@@ -142,9 +150,12 @@ class VpnViewModel @Inject constructor(
         if (auth == null) {
             val error = authResult.exceptionOrNull()
             if (error is AuthSessionExpiredException) {
-                handleExpiredSession("Сессия истекла, войдите заново")
+                handleExpiredSession(appContext.getString(R.string.vm_session_expired))
             } else {
-                val message = "Не удалось продлить сессию: ${error?.message ?: "нет сети"}"
+                val message = appContext.getString(
+                    R.string.vm_session_refresh_failed,
+                    error?.message ?: appContext.getString(R.string.vm_no_network),
+                )
                 logs.append(message)
                 postSideEffect(VpnSideEffect.ShowMessage(message))
             }
@@ -152,7 +163,7 @@ class VpnViewModel @Inject constructor(
         }
         if (auth.accessToken != state.token) {
             reduce { state.copy(token = auth.accessToken) }
-            logs.append("Access-токен обновлён")
+            logs.append(appContext.getString(R.string.vm_access_token_refreshed))
         }
 
         when (state.mode) {
@@ -164,15 +175,27 @@ class VpnViewModel @Inject constructor(
                 )
                 val config = validation.getOrNull()
                 if (config == null) {
-                    val message = validation.exceptionOrNull()?.message
-                        ?: "Некорректные настройки GuardWire"
+                    val error = validation.exceptionOrNull()
+                    val message = if (error is GuardWireConfigException) {
+                        when (error.reason) {
+                            GuardWireConfigError.HOST_EMPTY ->
+                                appContext.getString(R.string.validation_host_empty)
+                            GuardWireConfigError.PORT_INVALID ->
+                                appContext.getString(R.string.validation_port_invalid)
+                            GuardWireConfigError.TOKEN_EMPTY ->
+                                appContext.getString(R.string.validation_psk_empty)
+                        }
+                    } else {
+                        error?.message
+                            ?: appContext.getString(R.string.vm_guardwire_settings_invalid)
+                    }
                     reduce { state.copy(inputError = message) }
                     postSideEffect(VpnSideEffect.ShowMessage(message))
                     return@intent
                 }
 
                 settings.saveGuardWire(config)
-                    .onFailure { logs.append("Не удалось сохранить настройки GuardWire") }
+                    .onFailure { logs.append(appContext.getString(R.string.vm_guardwire_settings_save_failed)) }
                 pending = PendingConnection.GuardWire(config)
                 reduce {
                     state.copy(
@@ -217,12 +240,20 @@ class VpnViewModel @Inject constructor(
                         wireGuardAddress = result.wireGuardProfile?.addresses,
                     )
                 }
-                logs.append("Вход выполнен: ${result.session.username}")
+                logs.append(appContext.getString(R.string.vm_login_success, result.session.username))
             }
             .onFailure { error ->
-                val message = error.message ?: "Не удалось войти"
+                val message = when (error) {
+                    is LoginValidationException ->
+                        appContext.getString(R.string.login_validation_fields)
+                    is SessionStorageException ->
+                        appContext.getString(R.string.login_storage_failed)
+                    is WireGuardStorageException ->
+                        appContext.getString(R.string.wg_storage_failed)
+                    else -> error.message ?: appContext.getString(R.string.vm_login_failed)
+                }
                 reduce { state.copy(isLoggingIn = false, authError = message) }
-                logs.append("Ошибка входа: $message")
+                logs.append(appContext.getString(R.string.vm_login_error_log, message))
             }
     }
 
@@ -234,7 +265,7 @@ class VpnViewModel @Inject constructor(
 
     fun onLogout() = intent {
         logout(disconnect = state.isActive)
-            .onFailure { logs.append("Не удалось выйти: ${it.message}") }
+            .onFailure { logs.append(appContext.getString(R.string.vm_logout_failed, it.message ?: "?")) }
         wireGuardConfig = null
         reduce {
             state.copy(
@@ -247,7 +278,7 @@ class VpnViewModel @Inject constructor(
                 authError = null,
             )
         }
-        logs.append("Выход из аккаунта")
+        logs.append(appContext.getString(R.string.vm_logout_log))
     }
 
     fun onDisconnectClicked() = intent {
@@ -257,7 +288,7 @@ class VpnViewModel @Inject constructor(
 
     fun onNotificationPermissionResult(granted: Boolean) = intent {
         if (!granted) {
-            logs.append("Уведомления отключены — туннель продолжит работу")
+            logs.append(appContext.getString(R.string.vm_notifications_disabled))
         }
         requestVpnConsent()
     }
@@ -265,7 +296,7 @@ class VpnViewModel @Inject constructor(
     fun onVpnConsentResult(granted: Boolean) = intent {
         if (!granted) {
             pending = null
-            val message = "Без разрешения системы VPN-подключение невозможно"
+            val message = appContext.getString(R.string.vm_vpn_permission_required)
             reduce { state.copy(inputError = message) }
             postSideEffect(VpnSideEffect.ShowMessage(message))
             return@intent
@@ -277,11 +308,11 @@ class VpnViewModel @Inject constructor(
         if (state.isActive || state.isLoading || state.mode == mode) return@intent
         reduce { state.copy(mode = mode, inputError = null) }
         settings.saveMode(mode)
-            .onFailure { logs.append("Не удалось сохранить режим") }
+            .onFailure { logs.append(appContext.getString(R.string.vm_mode_save_failed)) }
         logs.append(
             when (mode) {
-                VpnMode.SIMPLIFIED -> "Выбран упрощённый режим GuardWire/2"
-                VpnMode.REAL -> "Выбран реальный режим WireGuard"
+                VpnMode.SIMPLIFIED -> appContext.getString(R.string.vm_mode_simplified_log)
+                VpnMode.REAL -> appContext.getString(R.string.vm_mode_real_log)
             },
         )
     }
@@ -295,7 +326,7 @@ class VpnViewModel @Inject constructor(
         if (state.isActive) return@intent
         wireGuardConfig = null
         settings.clearWireGuard()
-            .onFailure { logs.append("Не удалось удалить WireGuard-конфиг") }
+            .onFailure { logs.append(appContext.getString(R.string.vm_wg_config_delete_failed)) }
         reduce {
             state.copy(
                 hasWireGuardConfig = false,
@@ -304,7 +335,7 @@ class VpnViewModel @Inject constructor(
                 inputError = null,
             )
         }
-        logs.append("WireGuard: конфиг удалён")
+        logs.append(appContext.getString(R.string.vm_wg_config_removed))
     }
 
     fun onHostChanged(value: String) = intent {
@@ -356,9 +387,12 @@ class VpnViewModel @Inject constructor(
             reduce { state.copy(isProvisioningWireGuard = false) }
             val error = authResult.exceptionOrNull()
             if (error is AuthSessionExpiredException) {
-                handleExpiredSession("Сессия истекла, войдите заново")
+                handleExpiredSession(appContext.getString(R.string.vm_session_expired))
             } else {
-                val message = "Не удалось продлить сессию: ${error?.message ?: "нет сети"}"
+                val message = appContext.getString(
+                    R.string.vm_session_refresh_failed,
+                    error?.message ?: appContext.getString(R.string.vm_no_network),
+                )
                 logs.append(message)
                 postSideEffect(VpnSideEffect.ShowMessage(message))
             }
@@ -368,8 +402,12 @@ class VpnViewModel @Inject constructor(
         val result = provisionWireGuard()
         val provisioned = result.getOrNull()
         if (provisioned == null) {
-            val message = result.exceptionOrNull()?.message
-                ?: "Не удалось получить WireGuard-профиль"
+            val error = result.exceptionOrNull()
+            val message = if (error is WireGuardStorageException) {
+                appContext.getString(R.string.wg_storage_failed)
+            } else {
+                error?.message ?: appContext.getString(R.string.vm_wg_profile_failed)
+            }
             reduce {
                 state.copy(
                     isProvisioningWireGuard = false,
@@ -391,8 +429,8 @@ class VpnViewModel @Inject constructor(
                 inputError = null,
             )
         }
-        logs.append("WireGuard: профиль получен с сервера")
-        postSideEffect(VpnSideEffect.ShowMessage("WireGuard-профиль получен"))
+        logs.append(appContext.getString(R.string.vm_wg_profile_received_log))
+        postSideEffect(VpnSideEffect.ShowMessage(appContext.getString(R.string.vm_wg_profile_received)))
         return provisioned.config
     }
 
@@ -418,7 +456,7 @@ class VpnViewModel @Inject constructor(
             }
 
             null -> {
-                postSideEffect(VpnSideEffect.ShowMessage("Настройки потеряны, попробуйте ещё раз"))
+                postSideEffect(VpnSideEffect.ShowMessage(appContext.getString(R.string.vm_settings_lost)))
             }
         }
     }

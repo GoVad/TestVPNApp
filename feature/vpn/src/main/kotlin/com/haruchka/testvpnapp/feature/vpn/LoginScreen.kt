@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -67,12 +68,12 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "GuardWire",
+                text = stringResource(R.string.app_title),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Вход в аккаунт",
+                text = stringResource(R.string.login_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -81,8 +82,8 @@ fun LoginScreen(
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it; onInputChanged() },
-                label = { Text("Auth-сервер") },
-                placeholder = { Text("http://192.168.100.4:8090") },
+                label = { Text(stringResource(R.string.auth_server)) },
+                placeholder = { Text(stringResource(R.string.auth_server_placeholder)) },
                 singleLine = true,
                 enabled = !isLoading,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -92,7 +93,7 @@ fun LoginScreen(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it; onInputChanged() },
-                label = { Text("Логин") },
+                label = { Text(stringResource(R.string.username)) },
                 singleLine = true,
                 enabled = !isLoading,
                 modifier = Modifier.fillMaxWidth(),
@@ -101,7 +102,7 @@ fun LoginScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it; onInputChanged() },
-                label = { Text("Пароль") },
+                label = { Text(stringResource(R.string.password)) },
                 singleLine = true,
                 enabled = !isLoading,
                 visualTransformation = if (passwordVisible) {
@@ -114,7 +115,7 @@ fun LoginScreen(
                         onClick = { passwordVisible = !passwordVisible },
                         contentPadding = PaddingValues(horizontal = 4.dp),
                     ) {
-                        Text(if (passwordVisible) "Скрыть" else "Показать")
+                        Text(if (passwordVisible) stringResource(R.string.hide) else stringResource(R.string.show))
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -147,13 +148,12 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(10.dp))
                 }
-                Text("Войти")
+                Text(stringResource(R.string.login_button))
             }
 
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "Для теста: пользователь demo / пароль demo.\n" +
-                    "Auth-сервер должен быть запущен на порту 8090.",
+                text = stringResource(R.string.login_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

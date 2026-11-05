@@ -68,7 +68,7 @@ class GuardWireCodecTest {
             GuardWireFrameCodec.read(DataInputStream(ByteArrayInputStream(bytes)))
             fail("Ожидался GuardWireException")
         } catch (e: GuardWireException) {
-            assertTrue(e.message.orEmpty().contains("Неизвестный тип"))
+            assertTrue(e.message.orEmpty().contains("Unknown GuardWire frame type"))
         }
     }
 

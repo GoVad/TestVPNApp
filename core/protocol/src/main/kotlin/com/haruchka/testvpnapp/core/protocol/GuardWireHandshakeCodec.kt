@@ -49,16 +49,16 @@ object GuardWireHandshakeCodec {
 
     fun writeRequest(output: DataOutputStream, request: GuardWireHandshakeRequest) {
         require(request.clientNonce.size == GuardWireCrypto.NONCE_SIZE) {
-            "Некорректный размер clientNonce"
+            "Invalid clientNonce size"
         }
         require(request.proof.size == GuardWireCrypto.PROOF_SIZE) {
-            "Некорректный размер proof"
+            "Invalid proof size"
         }
         require(request.clientPublicKey.size in 1..MAX_PUBLIC_KEY_SIZE) {
-            "Некорректный размер публичного ключа"
+            "Invalid public key size"
         }
         require(request.mtu in 576..GuardWireProtocol.MAX_PAYLOAD_SIZE) {
-            "Некорректный MTU: ${request.mtu}"
+            "Invalid MTU: ${request.mtu}"
         }
 
         output.write(GuardWireProtocol.MAGIC)
@@ -81,7 +81,7 @@ object GuardWireHandshakeCodec {
 
         val publicKeySize = input.readUnsignedShort()
         if (publicKeySize !in 1..MAX_PUBLIC_KEY_SIZE) {
-            throw GuardWireException("Некорректный размер публичного ключа: $publicKeySize")
+            throw GuardWireException("Invalid public key size: $publicKeySize")
         }
         val clientPublicKey = ByteArray(publicKeySize)
         input.readFully(clientPublicKey)
@@ -99,15 +99,15 @@ object GuardWireHandshakeCodec {
 
     fun writeResponse(output: DataOutputStream, response: GuardWireHandshakeResponse) {
         val messageBytes = response.message.toByteArray(Charsets.UTF_8)
-        require(messageBytes.size <= MAX_MESSAGE_SIZE) { "Сообщение сервера слишком длинное" }
+        require(messageBytes.size <= MAX_MESSAGE_SIZE) { "Server message is too long" }
         require(response.serverNonce.size == GuardWireCrypto.NONCE_SIZE) {
-            "Некорректный размер serverNonce"
+            "Invalid serverNonce size"
         }
         require(response.proof.size == GuardWireCrypto.PROOF_SIZE) {
-            "Некорректный размер proof"
+            "Invalid proof size"
         }
         require(response.serverPublicKey.size in 1..MAX_PUBLIC_KEY_SIZE) {
-            "Некорректный размер публичного ключа"
+            "Invalid public key size"
         }
 
         output.write(GuardWireProtocol.MAGIC)
@@ -130,7 +130,7 @@ object GuardWireHandshakeCodec {
 
         val messageLength = input.readUnsignedShort()
         if (messageLength > MAX_MESSAGE_SIZE) {
-            throw GuardWireException("Слишком длинное сообщение сервера: $messageLength")
+            throw GuardWireException("Server message is too long: $messageLength")
         }
         val messageBytes = ByteArray(messageLength)
         input.readFully(messageBytes)
@@ -140,7 +140,7 @@ object GuardWireHandshakeCodec {
 
         val publicKeySize = input.readUnsignedShort()
         if (publicKeySize !in 1..MAX_PUBLIC_KEY_SIZE) {
-            throw GuardWireException("Некорректный размер публичного ключа: $publicKeySize")
+            throw GuardWireException("Invalid public key size: $publicKeySize")
         }
         val serverPublicKey = ByteArray(publicKeySize)
         input.readFully(serverPublicKey)
@@ -161,14 +161,14 @@ object GuardWireHandshakeCodec {
         val magic = ByteArray(GuardWireProtocol.MAGIC.size)
         input.readFully(magic)
         if (!magic.contentEquals(GuardWireProtocol.MAGIC)) {
-            throw GuardWireException("Сервер не является GuardWire-сервером")
+            throw GuardWireException("Server is not a GuardWire server")
         }
     }
 
     private fun requireVersion(version: Int) {
         if (version != GuardWireProtocol.VERSION) {
             throw GuardWireException(
-                "Неподдерживаемая версия GuardWire: $version, ожидается ${GuardWireProtocol.VERSION}",
+                "Unsupported GuardWire version: $version, expected ${GuardWireProtocol.VERSION}",
             )
         }
     }

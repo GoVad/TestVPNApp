@@ -6,6 +6,14 @@ import com.haruchka.testvpnapp.core.domain.VpnSettingsStore
 import com.haruchka.testvpnapp.core.domain.WireGuardProfile
 import com.haruchka.testvpnapp.core.domain.WireGuardProfileParser
 
+class LoginValidationException : IllegalArgumentException("Invalid login fields")
+
+class SessionStorageException(cause: Throwable) :
+    IllegalStateException("Failed to save session", cause)
+
+class WireGuardStorageException(cause: Throwable) :
+    IllegalStateException("Failed to save WireGuard config", cause)
+
 /** Результат входа: сессия и актуальный WireGuard-профиль, если он есть. */
 data class LoginResult(
     val session: AuthSession,
@@ -30,8 +38,8 @@ class LoginUseCase(
     ): Result<LoginResult> = runCatching {
         val server = baseUrl.trim()
         val user = username.trim()
-        require(server.isNotEmpty() && user.isNotEmpty() && password.isNotEmpty()) {
-            "Заполните auth-сервер, логин и пароль"
+        if (server.isEmpty() || user.isEmpty() || password.isEmpty()) {
+            throw LoginValidationException()
         }
 
         val session = authService.login(server, user, password)
@@ -48,13 +56,13 @@ class LoginUseCase(
                 baseUrl = server,
             )
         } catch (error: Exception) {
-            throw IllegalStateException("Не удалось сохранить сессию", error)
+            throw SessionStorageException(error)
         }
         if (session.wireGuardConfig != null) {
             try {
                 settings.saveWireGuardConfig(session.wireGuardConfig)
             } catch (error: Exception) {
-                throw IllegalStateException("Не удалось сохранить WireGuard-конфиг", error)
+                throw WireGuardStorageException(error)
             }
         }
 

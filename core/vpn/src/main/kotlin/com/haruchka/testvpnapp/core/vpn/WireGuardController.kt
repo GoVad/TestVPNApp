@@ -54,7 +54,7 @@ class WireGuardController @Inject constructor(
         val config = try {
             configParser.parse(configText)
         } catch (e: Exception) {
-            val message = e.message ?: "Некорректный WireGuard-конфиг"
+            val message = e.message ?: appContext.getString(R.string.error_wireguard_invalid_config)
             stateStore.markFailed(message)
             logStore.append(message)
             return
@@ -64,14 +64,14 @@ class WireGuardController @Inject constructor(
 
         stopping = false
         stateStore.markConnecting(VpnMode.REAL)
-        logStore.append("WireGuard: подключение…")
+        logStore.append(appContext.getString(R.string.log_wireguard_connecting))
         runCatching {
             VpnNotificationService.start(
                 appContext,
                 appContext.getString(R.string.wireguard_notification_connecting),
             )
         }.onFailure {
-            logStore.append("WireGuard: не удалось показать уведомление")
+            logStore.append(appContext.getString(R.string.log_wireguard_notification_failed))
         }
 
         connectJob = scope.launch {
@@ -92,7 +92,10 @@ class WireGuardController @Inject constructor(
                 activeTunnel = null
                 stopStats()
                 VpnNotificationService.stop(appContext)
-                val message = "WireGuard: ${e.message ?: "не удалось подключиться"}"
+                val message = appContext.getString(
+                    R.string.error_wireguard_connect_failed,
+                    e.message ?: appContext.getString(R.string.error_wireguard_connect_generic),
+                )
                 logStore.append(message)
                 stateStore.markFailed(message)
             }
@@ -103,7 +106,7 @@ class WireGuardController @Inject constructor(
         val tunnel = activeTunnel
         stopping = true
         stateStore.markDisconnecting()
-        logStore.append("WireGuard: отключение…")
+        logStore.append(appContext.getString(R.string.log_wireguard_disconnecting))
         connectJob?.cancel()
         connectJob = null
         stopStats()
@@ -136,7 +139,7 @@ class WireGuardController @Inject constructor(
     private fun onUp(tunnel: Tunnel) {
         if (stateStore.state.value.isConnected) return
         stateStore.markConnected(VpnMode.REAL, System.currentTimeMillis())
-        logStore.append("WireGuard: туннель установлен")
+        logStore.append(appContext.getString(R.string.log_wireguard_tunnel_established))
         VpnNotificationService.update(
             appContext,
             appContext.getString(R.string.wireguard_notification_connected),
@@ -151,7 +154,7 @@ class WireGuardController @Inject constructor(
         stopStats()
         if (wasActive) {
             stateStore.markDisconnected()
-            logStore.append("WireGuard: туннель отключён")
+            logStore.append(appContext.getString(R.string.log_wireguard_tunnel_disconnected))
         }
         VpnNotificationService.stop(appContext)
     }

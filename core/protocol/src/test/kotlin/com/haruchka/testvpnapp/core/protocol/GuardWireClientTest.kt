@@ -150,7 +150,7 @@ class GuardWireClientTest {
                 GuardWireClient(config).connect().use { }
                 throw AssertionError("Ожидался отказ из-за неверного PSK")
             } catch (e: GuardWireException) {
-                assertTrue(e.message.orEmpty().contains("отклонил"))
+                assertTrue(e.message.orEmpty().contains("rejected"))
             }
 
             serverTask.get(5, TimeUnit.SECONDS)

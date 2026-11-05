@@ -23,7 +23,7 @@ class GuardWireConnection internal constructor(
 
     /** Отправляет один IP-пакет как зашифрованный DATA-кадр. */
     fun sendData(packet: ByteArray, length: Int) {
-        require(length in 0..packet.size) { "Некорректная длина пакета: $length" }
+        require(length in 0..packet.size) { "Invalid packet length: $length" }
         val payload = if (length == packet.size) packet else packet.copyOf(length)
         writeEncryptedFrame(GuardWireFrameType.DATA.code, payload)
     }
@@ -47,7 +47,7 @@ class GuardWireConnection internal constructor(
     /** Блокирующее чтение и расшифровка следующего кадра. */
     fun receive(): GuardWireFrame {
         val frame = GuardWireFrameCodec.read(input)
-            ?: throw GuardWireException("Сервер закрыл GuardWire-соединение")
+            ?: throw GuardWireException("Server closed GuardWire connection")
         return GuardWireFrame(
             type = frame.type,
             payload = session.decrypt(frame.type.code, frame.payload),

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="auth_error_wg_missing">Server did not return a WireGuard config</string>
+    <string name="auth_error_access_missing">Server did not return an access token</string>
+    <string name="auth_error_refresh_missing">Server did not return a refresh token</string>
+    <string name="auth_error_expiry_missing">Server did not return token expiry</string>
+    <string name="auth_error_bad_url">Invalid auth server address</string>
+    <string name="auth_error_bad_response">Server returned an invalid response</string>
+    <string name="auth_error_network">Auth server connection failed: %1$s</string>
+    <string name="auth_error_network_short">network</string>
+    <string name="auth_error_incomplete_wg">Auth server returned an incomplete WireGuard config</string>
+    <string name="auth_error_url_empty">Specify the auth server address</string>
+    <string name="auth_error_https_required">Auth server must use https://</string>
+    <string name="auth_error_http_status">HTTP %1$d</string>
+</resources>

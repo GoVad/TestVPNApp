@@ -198,7 +198,7 @@ class AuthServerConfig:
         if not self.wireguard_enabled:
             return None
         if not public_key:
-            raise auth.AuthError("Не передан WireGuard public key")
+            raise auth.AuthError("WireGuard public key is missing")
 
         with self._lock:
             interface = self.args.wg_interface
@@ -225,7 +225,7 @@ class AuthServerConfig:
                 capture_output=True,
             )
             if result.returncode != 0:
-                raise auth.AuthError(f"Не удалось добавить WireGuard peer: {result.stderr.strip()}")
+                raise auth.AuthError(f"Failed to add WireGuard peer: {result.stderr.strip()}")
 
             record["public_key"] = public_key
             self._save_state()
@@ -260,7 +260,7 @@ class AuthServerConfig:
             ip = f"{base}.{octet}"
             if ip not in used:
                 return ip
-        raise auth.AuthError("Закончились адреса в WireGuard-пуле")
+        raise auth.AuthError("WireGuard IP pool exhausted")
 
 
 CONFIG: AuthServerConfig
@@ -288,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
         except Exception as error:
-            self._json(400, {"error": f"Некорректный JSON: {error}"})
+            self._json(400, {"error": f"Invalid JSON: {error}"})
             return
 
         if self.path == "/auth/login":
@@ -307,7 +307,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if not CONFIG.authenticate(username, password):
             print(f"[-] Неудачный вход: {username!r}")
-            self._json(401, {"error": "Неверный логин или пароль"})
+            self._json(401, {"error": "Invalid username or password"})
             return
 
         try:
@@ -329,12 +329,12 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_refresh(self, payload: dict) -> None:
         refresh_token = str(payload.get("refresh_token", "")).strip()
         if not refresh_token:
-            self._json(400, {"error": "Не передан refresh_token"})
+            self._json(400, {"error": "refresh_token is missing"})
             return
 
         session = CONFIG.refresh_session(refresh_token)
         if session is None:
-            self._json(401, {"error": "Refresh-токен недействителен или истёк"})
+            self._json(401, {"error": "Refresh token is invalid or expired"})
             return
 
         print(f"[+] Сессия продлена: {session['username']!r}")
@@ -342,12 +342,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_wireguard(self, payload: dict) -> None:
         if not CONFIG.wireguard_enabled:
-            self._json(503, {"error": "WireGuard выключен на auth-сервере"})
+            self._json(503, {"error": "WireGuard is disabled on the auth server"})
             return
 
         username = self._access_username()
         if username is None:
-            self._json(401, {"error": "Access-токен недействителен или истёк"})
+            self._json(401, {"error": "Access token is invalid or expired"})
             return
 
         public_key = str(payload.get("wg_public_key", "")).strip()
@@ -379,10 +379,10 @@ class Handler(BaseHTTPRequestHandler):
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > 16_384:
-            raise ValueError("Некорректный размер запроса")
+            raise ValueError("Invalid request size")
         payload = json.loads(self.rfile.read(length).decode("utf-8"))
         if not isinstance(payload, dict):
-            raise ValueError("Ожидался JSON-объект")
+            raise ValueError("Expected a JSON object")
         return payload
 
     def _json(self, status: int, payload: dict) -> None:

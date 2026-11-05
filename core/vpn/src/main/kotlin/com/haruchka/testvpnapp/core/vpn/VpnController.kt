@@ -40,7 +40,10 @@ class VpnController @Inject constructor(
             )
         }.onFailure { error ->
             stateStore.markFailed(
-                "Не удалось запустить VPN-сервис: ${error.message ?: "неизвестная ошибка"}",
+                appContext.getString(
+                    R.string.error_vpn_service_start,
+                    error.message ?: appContext.getString(R.string.error_unknown),
+                ),
             )
         }
     }
@@ -62,7 +65,10 @@ class VpnController @Inject constructor(
             appContext.startService(GuardWireVpnService.disconnectIntent(appContext))
         }.onFailure { error ->
             stateStore.markFailed(
-                "Не удалось остановить VPN-сервис: ${error.message ?: "неизвестная ошибка"}",
+                appContext.getString(
+                    R.string.error_vpn_service_stop,
+                    error.message ?: appContext.getString(R.string.error_unknown),
+                ),
             )
         }
     }

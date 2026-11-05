@@ -126,7 +126,7 @@ class AuthRepository @Inject constructor(
             bearerToken = accessToken,
         )
         val wireguard = json.optJSONObject("wireguard")
-            ?: throw AuthException("Сервер не вернул WireGuard-конфиг")
+            ?: throw AuthException(appContext.getString(R.string.auth_error_wg_missing))
         buildWireGuardConfig(keyPair, wireguard)
     }
 
@@ -144,16 +144,16 @@ class AuthRepository @Inject constructor(
 
     private fun parseSession(json: JSONObject, fallbackUsername: String): AuthSession {
         val accessToken = json.optString("access_token").takeIf { it.isNotBlank() }
-            ?: throw AuthException("Сервер не вернул access-токен")
+            ?: throw AuthException(appContext.getString(R.string.auth_error_access_missing))
         val refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() }
-            ?: throw AuthException("Сервер не вернул refresh-токен")
+            ?: throw AuthException(appContext.getString(R.string.auth_error_refresh_missing))
         val accessExpiresAt = json.optLong(
             "access_expires_at",
             json.optLong("expires_at", 0L),
         )
         val refreshExpiresAt = json.optLong("refresh_expires_at", 0L)
         if (accessExpiresAt <= 0L || refreshExpiresAt <= 0L) {
-            throw AuthException("Сервер не вернул сроки действия токенов")
+            throw AuthException(appContext.getString(R.string.auth_error_expiry_missing))
         }
 
         return AuthSession(
@@ -188,7 +188,7 @@ class AuthRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            throw AuthException("Некорректный адрес auth-сервера", e)
+            throw AuthException(appContext.getString(R.string.auth_error_bad_url), e)
         }
 
         try {
@@ -200,16 +200,22 @@ class AuthRepository @Inject constructor(
             if (status !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("error") }.getOrNull()
                     ?.takeIf { it.isNotBlank() }
-                    ?: "HTTP $status"
+                    ?: appContext.getString(R.string.auth_error_http_status, status)
                 throw AuthHttpException(status, message)
             }
 
             return runCatching { JSONObject(body) }
-                .getOrElse { throw AuthException("Сервер вернул некорректный ответ", it) }
+                .getOrElse { throw AuthException(appContext.getString(R.string.auth_error_bad_response), it) }
         } catch (e: AuthException) {
             throw e
         } catch (e: Exception) {
-            throw AuthException("Ошибка связи с auth-сервером: ${e.message ?: "сеть"}", e)
+            throw AuthException(
+                appContext.getString(
+                    R.string.auth_error_network,
+                    e.message ?: appContext.getString(R.string.auth_error_network_short),
+                ),
+                e,
+            )
         } finally {
             connection.disconnect()
         }
@@ -223,7 +229,7 @@ class AuthRepository @Inject constructor(
         val mtu = wireguard.optInt("mtu", 1420)
 
         if (serverPublicKey.isBlank() || endpoint.isBlank() || clientIp.isBlank()) {
-            throw AuthException("Auth-сервер вернул неполный WireGuard-конфиг")
+            throw AuthException(appContext.getString(R.string.auth_error_incomplete_wg))
         }
 
         val config = buildString {
@@ -247,9 +253,9 @@ class AuthRepository @Inject constructor(
 
     private fun normalizeBaseUrl(value: String): String {
         val trimmed = value.trim().trimEnd('/')
-        if (trimmed.isEmpty()) throw AuthException("Укажите адрес auth-сервера")
+        if (trimmed.isEmpty()) throw AuthException(appContext.getString(R.string.auth_error_url_empty))
         if (trimmed.startsWith("http://")) {
-            throw AuthException("Auth-сервер должен использовать https://")
+            throw AuthException(appContext.getString(R.string.auth_error_https_required))
         }
         return if (trimmed.startsWith("https://")) {
             trimmed

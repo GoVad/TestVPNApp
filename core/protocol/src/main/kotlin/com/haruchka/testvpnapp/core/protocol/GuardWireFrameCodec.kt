@@ -18,7 +18,7 @@ object GuardWireFrameCodec {
 
     fun write(output: DataOutputStream, frame: GuardWireFrame) {
         require(frame.payload.size <= GuardWireProtocol.MAX_PAYLOAD_SIZE) {
-            "Payload больше ${GuardWireProtocol.MAX_PAYLOAD_SIZE} байт"
+            "Payload exceeds ${GuardWireProtocol.MAX_PAYLOAD_SIZE} bytes"
         }
         output.writeByte(frame.type.code)
         output.writeShort(frame.payload.size)

@@ -46,7 +46,7 @@ class LoginUseCaseTest {
         val result = useCase(settings)("http://vpn.example:8090", "demo", "demo")
 
         assertTrue(result.isFailure)
-        assertEquals("Не удалось сохранить сессию", result.exceptionOrNull()?.message)
+        assertTrue(result.exceptionOrNull() is SessionStorageException)
     }
 
     private fun useCase(settings: FakeSettingsStore): LoginUseCase = LoginUseCase(

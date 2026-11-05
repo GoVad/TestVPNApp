@@ -11,4 +11,4 @@ data class AuthSession(
 )
 
 /** Refresh-токен истёк или отозван: нужен повторный вход. */
-class AuthSessionExpiredException : Exception("Сессия истекла, войдите заново")
+class AuthSessionExpiredException : Exception("Auth session expired")

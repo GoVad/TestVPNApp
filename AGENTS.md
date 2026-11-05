@@ -56,7 +56,7 @@
 - При изменении handshake/криптографии синхронно правь Kotlin и Python-серверы, обновляй `GuardWireCodecTest`, `GuardWireCryptoTest`, `GuardWireClientTest`.
 - При отмене подключения проверяй `ensureActive()` после блокирующих IO-вызовов и закрывай сокет/TUN.
 - IPv6 намеренно не маршрутизируется; WireGuard-конфиг с IPv6 отклоняется.
-- UI-тексты и комментарии — на русском; имена кода — на английском.
+- UI-строки — в `strings.xml`: default English, русский — в `values-ru/strings.xml`. Диагностика Android-модулей — English-only `strings.xml`; `core:protocol` — английские константы, потому что модуль чистый JVM. Комментарии — на русском, имена кода — на английском.
 
 ## Безопасность
 

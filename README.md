@@ -89,6 +89,7 @@ UI вызывает use case-и из `:core:domain`, а Hilt связывает 
 | HTTPS auth, access/refresh, logout/revoke | ✅ |
 | Автоматический WireGuard-профиль | ✅ |
 | Keystore-шифрование секретов | ✅ |
+| UI-строки: English default + `values-ru` | ✅ |
 | Reconnect при смене сети | ✅ |
 | Always-on | ✅ для GuardWire |
 | Split tunneling, kill switch | ❌ осознанно вне демо |
@@ -977,6 +978,10 @@ push/PR собирает APK, запускает domain/protocol-тесты и l
   SHA-256; при logout/истечении нужен повторный вход.
 - **Hilt-синглтоны живут в процессе.** Это нормально для приложения, но
   для фоновых/удалённых процессов нужен отдельный scoped-граф.
+- **Локализация.** UI и уведомления — `strings.xml` (default English,
+  `values-ru`). Диагностические сообщения Android-модулей — English-only
+  `strings.xml`; `core:protocol` — чистый JVM, поэтому его внутренние ошибки
+  остаются английскими константами.
 - **`specialUse` FGS type.** Для Google Play требуется декларация назначения и
   соблюдение политики.
 - **Маршрут по умолчанию.** Реальное приложение должно продумать маршруты,

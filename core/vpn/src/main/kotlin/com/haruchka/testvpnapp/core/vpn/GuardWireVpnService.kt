@@ -92,7 +92,7 @@ class GuardWireVpnService : VpnService() {
             ACTION_CONNECT -> {
                 val server = intent.toServerConfig()
                 if (server == null) {
-                    shutdown(reason = "Некорректные настройки GuardWire-сервера")
+                    shutdown(reason = getString(R.string.error_guardwire_invalid_settings))
                 } else {
                     handleConnect(server)
                 }
@@ -108,7 +108,7 @@ class GuardWireVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        shutdown(reason = "VPN-подключение отозвано системой")
+        shutdown(reason = getString(R.string.error_guardwire_revoked))
         super.onRevoke()
     }
 
@@ -138,7 +138,7 @@ class GuardWireVpnService : VpnService() {
             networkLost = false
         }
 
-        logStore.append("GuardWire: подключение к ${server.endpoint}…")
+        logStore.append(getString(R.string.log_guardwire_connecting, server.endpoint))
         stateStore.markConnecting(VpnMode.SIMPLIFIED, server)
         updateNotification(
             getString(R.string.guardwire_notification_connecting, server.endpoint),
@@ -154,23 +154,23 @@ class GuardWireVpnService : VpnService() {
         scope.launch {
             val stored = runCatching { settingsStore.load() }.getOrNull()
             if (stored == null) {
-                shutdown(reason = "Не удалось загрузить настройки VPN")
+                shutdown(reason = getString(R.string.error_guardwire_settings_load_failed))
                 return@launch
             }
             if (stored.mode != VpnMode.SIMPLIFIED) {
-                shutdown(reason = "Always-on поддерживается только в упрощённом режиме")
+                shutdown(reason = getString(R.string.error_guardwire_always_on_mode))
                 return@launch
             }
 
             val session = ensureAuthSession().getOrNull()
             if (session == null) {
-                shutdown(reason = "Сессия истекла, войдите заново")
+                shutdown(reason = getString(R.string.error_guardwire_session_expired))
                 return@launch
             }
 
             val config = stored.guardWire.copy(token = session.accessToken)
             if (config.host.isBlank() || config.token.isBlank()) {
-                shutdown(reason = "Нет сохранённого GuardWire-профиля")
+                shutdown(reason = getString(R.string.error_guardwire_no_profile))
                 return@launch
             }
             handleConnect(config)
@@ -181,7 +181,7 @@ class GuardWireVpnService : VpnService() {
         connectJob = scope.launch {
             val session = ensureAuthSession().getOrNull()
             if (session == null && server.token.isBlank()) {
-                shutdown(reason = "Сессия истекла, войдите заново")
+                shutdown(reason = getString(R.string.error_guardwire_session_expired))
                 return@launch
             }
             val actual = if (session != null) {
@@ -210,6 +210,7 @@ class GuardWireVpnService : VpnService() {
             currentCoroutineContext().ensureActive()
 
             val newTunnel = GuardWireTunnel(
+                context = this@GuardWireVpnService,
                 scope = scope,
                 descriptor = descriptor,
                 connection = connection,
@@ -231,7 +232,7 @@ class GuardWireVpnService : VpnService() {
                 reconnectAttempt = 0
                 networkLost = false
                 stateStore.markConnected(VpnMode.SIMPLIFIED, System.currentTimeMillis(), server)
-                logStore.append("GuardWire: туннель установлен")
+                logStore.append(getString(R.string.log_guardwire_tunnel_established))
                 updateNotification(
                     getString(R.string.guardwire_notification_connected, server.endpoint),
                 )
@@ -248,7 +249,7 @@ class GuardWireVpnService : VpnService() {
         } catch (e: Exception) {
             runCatching { connection?.close() }
             runCatching { descriptor?.close() }
-            val reason = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось подключиться"
+            val reason = e.message?.takeIf { it.isNotBlank() } ?: getString(R.string.error_guardwire_connect_failed)
             if (stopping) {
                 shutdown(reason = reason)
             } else {
@@ -279,14 +280,18 @@ class GuardWireVpnService : VpnService() {
         }
 
         if (shouldStop) {
-            shutdown(reason = "Не удалось восстановить соединение: $reason")
+            shutdown(reason = getString(R.string.error_guardwire_reconnect_failed, reason))
             return
         }
 
         val server = target ?: return
         stateStore.markConnecting(VpnMode.SIMPLIFIED, server)
         logStore.append(
-            "GuardWire: переподключение через ${delayMillis / 1_000} с — $reason",
+            getString(
+                R.string.log_guardwire_reconnecting,
+                (delayMillis / 1_000).toInt(),
+                reason,
+            ),
         )
         updateNotification(
             getString(R.string.guardwire_notification_connecting, server.endpoint),
@@ -312,18 +317,18 @@ class GuardWireVpnService : VpnService() {
             override fun onLost(network: Network) {
                 if (stopping || serverConfig == null) return
                 networkLost = true
-                scope.launch { scheduleReconnect("Сеть недоступна") }
+                scope.launch { scheduleReconnect(getString(R.string.log_guardwire_network_unavailable)) }
             }
 
             override fun onAvailable(network: Network) {
                 if (!networkLost || stopping || serverConfig == null) return
                 networkLost = false
-                scope.launch { scheduleReconnect("Сеть восстановлена") }
+                scope.launch { scheduleReconnect(getString(R.string.log_guardwire_network_restored)) }
             }
         }
         networkCallback = callback
         runCatching { manager.registerNetworkCallback(request, callback) }
-            .onFailure { logStore.append("GuardWire: не удалось отслеживать сеть") }
+            .onFailure { logStore.append(getString(R.string.log_guardwire_network_monitor_failed)) }
     }
 
     private fun unregisterNetworkCallback() {
@@ -348,7 +353,7 @@ class GuardWireVpnService : VpnService() {
         }
 
         return builder.establish()
-            ?: throw GuardWireException("VpnService.establish() вернул null")
+            ?: throw GuardWireException(getString(R.string.error_guardwire_establish_null))
     }
 
     private fun shutdown(reason: String?) {
@@ -366,7 +371,7 @@ class GuardWireVpnService : VpnService() {
 
         if (reason == null) {
             stateStore.markDisconnected()
-            logStore.append("GuardWire: туннель отключён")
+            logStore.append(getString(R.string.log_guardwire_tunnel_disconnected))
         } else {
             stateStore.markFailed(reason)
             logStore.append("GuardWire: $reason")

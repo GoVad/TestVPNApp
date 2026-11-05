@@ -51,7 +51,7 @@ object GuardWireCrypto {
     )
 
     fun createClientHandshake(token: String, mtu: Int): ClientHandshake {
-        require(token.isNotEmpty()) { "PSK-токен не должен быть пустым" }
+        require(token.isNotEmpty()) { "PSK token must not be empty" }
         val keyPair = generateKeyPair()
         val nonce = randomBytes(NONCE_SIZE)
         val publicKey = keyPair.public.encoded
@@ -89,7 +89,7 @@ object GuardWireCrypto {
     ): GuardWireSession {
         if (!response.accepted) {
             throw GuardWireException(
-                "Сервер отклонил подключение: ${response.message.ifBlank { "без описания" }}",
+                "Server rejected connection: ${response.message.ifBlank { "no description" }}",
             )
         }
 
@@ -104,7 +104,7 @@ object GuardWireCrypto {
             ),
         )
         if (!MessageDigest.isEqual(expectedProof, response.proof)) {
-            throw GuardWireException("Сервер не подтвердил знание PSK")
+            throw GuardWireException("Server did not confirm PSK knowledge")
         }
 
         return deriveSessionKey(
@@ -167,7 +167,7 @@ object GuardWireCrypto {
             )
             return GuardWireSession(key)
         } catch (e: Exception) {
-            throw GuardWireException("Не удалось вывести сессионный ключ: ${e.message}", e)
+            throw GuardWireException("Failed to derive session key: ${e.message}", e)
         }
     }
 
@@ -183,7 +183,7 @@ object GuardWireCrypto {
             generator.initialize(ECGenParameterSpec(CURVE))
             return generator.generateKeyPair()
         } catch (e: Exception) {
-            throw GuardWireException("Не удалось сгенерировать EC-ключ: ${e.message}", e)
+            throw GuardWireException("Failed to generate EC key: ${e.message}", e)
         }
     }
 
@@ -264,7 +264,7 @@ object GuardWireCrypto {
 class GuardWireSession internal constructor(private val key: ByteArray) {
 
     init {
-        require(key.size == 32) { "Ожидается AES-256 ключ" }
+        require(key.size == 32) { "AES-256 key expected" }
     }
 
     fun encrypt(frameType: Int, payload: ByteArray): ByteArray {
@@ -280,13 +280,13 @@ class GuardWireSession internal constructor(private val key: ByteArray) {
             val ciphertext = cipher.doFinal(payload)
             return iv + ciphertext
         } catch (e: Exception) {
-            throw GuardWireException("Не удалось зашифровать кадр: ${e.message}", e)
+            throw GuardWireException("Failed to encrypt frame: ${e.message}", e)
         }
     }
 
     fun decrypt(frameType: Int, encryptedPayload: ByteArray): ByteArray {
         if (encryptedPayload.size < GuardWireCrypto.GCM_IV_SIZE + GuardWireCrypto.GCM_TAG_BITS / 8) {
-            throw GuardWireException("Слишком короткий зашифрованный кадр")
+            throw GuardWireException("Encrypted frame is too short")
         }
         val iv = encryptedPayload.copyOfRange(0, GuardWireCrypto.GCM_IV_SIZE)
         val ciphertext = encryptedPayload.copyOfRange(GuardWireCrypto.GCM_IV_SIZE, encryptedPayload.size)
@@ -301,7 +301,7 @@ class GuardWireSession internal constructor(private val key: ByteArray) {
             cipher.updateAAD(byteArrayOf(frameType.toByte()))
             return cipher.doFinal(ciphertext)
         } catch (e: Exception) {
-            throw GuardWireException("Не удалось расшифровать кадр: ${e.message}", e)
+            throw GuardWireException("Failed to decrypt frame: ${e.message}", e)
         }
     }
 

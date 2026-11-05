@@ -31,7 +31,7 @@ class ProvisionWireGuardUseCase(
         try {
             settings.saveWireGuardConfig(config)
         } catch (error: Exception) {
-            throw IllegalStateException("Не удалось сохранить WireGuard-конфиг", error)
+            throw WireGuardStorageException(error)
         }
 
         ProvisionedWireGuard(config = config, profile = profile)

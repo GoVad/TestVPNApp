@@ -42,7 +42,7 @@ enum class GuardWireFrameType(val code: Int) {
     companion object {
         fun fromCode(code: Int): GuardWireFrameType =
             entries.firstOrNull { it.code == code }
-                ?: throw GuardWireException("Неизвестный тип GuardWire-кадра: 0x${code.toString(16)}")
+                ?: throw GuardWireException("Unknown GuardWire frame type: 0x${code.toString(16)}")
     }
 }
 
