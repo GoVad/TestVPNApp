@@ -276,7 +276,7 @@ VpnScreen (stateless Compose)
 | `LogoutUseCase` | отзыв refresh на сервере, отключение и очистка локальных секретов |
 | `VpnConnectionUseCase` | подключение в обоих режимах, отключение, наблюдение за состоянием |
 | `ValidateGuardWireConfigUseCase` | проверка host/port/PSK и сборка `VpnServerConfig` |
-| `SaveWireGuardConfigUseCase` | проверка конфига, построение профиля и сохранение |
+| `ProvisionWireGuardUseCase` | запрос WireGuard-профиля у сервера, проверка и сохранение |
 | `VpnSettingsUseCase` | сохранение режима и GuardWire-параметров, удаление WireGuard-конфига |
 | `VpnLogsUseCase` | наблюдение за журналом, запись и очистка |
 
@@ -324,7 +324,7 @@ LoginScreen
    ▼
 VpnViewModel.onLogin
    ▼
-AuthRepository ── POST /auth/login ──► guardwire-auth-server (8090)
+AuthRepository ── HTTPS POST /auth/login ──► guardwire-auth-server (8090)
    │                                      │ scrypt-проверка пароля
    │                                      │ access (15 мин) + refresh (30 дней)
    │                                      │ + WireGuard peer
@@ -334,6 +334,9 @@ AuthRepository ── POST /auth/login ──► guardwire-auth-server (8090)
    ├─ refresh → DataStore (зашифрован Keystore)
    └─ wireguard → конфиг с приватным ключом на устройстве → DataStore
 ```
+
+Если профиль нужно перевыпустить, приложение вызывает
+`POST /auth/wireguard` с access-токеном — вставлять `.conf` вручную не нужно.
 
 При старте и перед подключением `EnsureAuthSessionUseCase` проверяет access.
 Если он истёк, а refresh ещё жив, клиент вызывает `POST /auth/refresh`,
@@ -560,6 +563,7 @@ PSK-ECDH проще: общий секрет уже есть в настройк
 - Python 3 — для тестовых серверов;
 - Python-пакет `cryptography`; проще всего через `./tools/setup-python.sh`
   (создаёт `.venv`), либо `sudo apt install python3-cryptography`;
+- `openssl` — для генерации локального TLS-сертификата;
 - Linux, root и `iptables` — только для полноценного сервера с NAT.
 
 ### Сборка
@@ -580,9 +584,10 @@ sudo ./tools/wireguard-server-setup.sh
 ```
 
 Скрипт создаёт `/etc/wireguard/wg0.conf`, поднимает интерфейс и кладёт
-клиентский конфиг в `~/guardwire-wireguard/phone.conf` (не в репозиторий).
-В приложении выберите режим **«Реальная»** и вставьте этот конфиг через
-кнопку «Вставить конфиг». Конфиг с IPv6 будет отклонён.
+клиентский конфиг в `~/guardwire-wireguard/phone.conf` для ручной проверки.
+В приложении выбирать и вставлять `.conf` не нужно: при входе и по кнопке
+«Получить профиль» auth-сервер сам выдаёт WireGuard-профиль и peer.
+Конфиг с IPv6 будет отклонён.
 
 Проверка:
 
@@ -612,6 +617,16 @@ python3 tools/guardwire-demo-server.py \
     --auth-token-file tools/.guardwire-token
 ```
 
+Перед первым запуском сгенерируйте локальный CA и TLS-сертификат:
+
+```bash
+./tools/gen-auth-cert.sh 192.168.100.4
+```
+
+CA-сертификат копируется в `core/data/src/main/res/raw/auth_ca.pem`; приватные
+ключи лежат в `tools/.guardwire-certs/` и не попадают в git. Если LAN-IP
+меняется, перегенерируйте сертификат и пересоберите APK.
+
 Для реального режима auth-сервер запускается с root и сам добавляет WireGuard peer:
 
 ```bash
@@ -621,24 +636,29 @@ sudo python3 tools/guardwire-auth-server.py \
     --wg-interface wg0 \
     --wg-endpoint 192.168.100.4:51820
 
-# по умолчанию: access — 15 минут, refresh — 30 дней
+# по умолчанию: HTTPS, access — 15 минут, refresh — 30 дней
 # можно переопределить:
 #   --access-ttl 900 --refresh-ttl 2592000
+# отладка без TLS:
+#   --no-tls
 ```
 
 В приложении на экране входа:
 
-- auth-сервер: `http://192.168.100.4:8090`
+- auth-сервер: `https://192.168.100.4:8090`
 - логин: `demo`
 - пароль: `demo`
 
 Для упрощённого режима токен автоматически становится PSK. Для реального
 режима auth-сервер выдаёт параметры WireGuard, а приватный ключ генерируется
 на устройстве. Токен и WireGuard-конфиг хранятся в DataStore зашифрованными.
+WireGuard-профиль можно получить и обновить кнопкой в приложении — вставлять
+`.conf` вручную не нужно.
 
-> Auth-сервер использует HTTP без TLS — это только для теста в доверенной
-> локальной сети. В приложении для этого включён `usesCleartextTraffic`.
-> Для production нужен HTTPS.
+> Auth-сервер работает по HTTPS с локальным CA. Приложение доверяет только
+> этому CA из `res/raw/auth_ca.pem`; системные/публичные CA не принимаются.
+> `usesCleartextTraffic` выключен, поэтому `http://` для auth-сервера
+> отклоняется.
 
 #### Auth API
 
@@ -680,6 +700,16 @@ sudo python3 tools/guardwire-auth-server.py \
 
 Возвращает новую пару `access_token` / `refresh_token`; старый refresh
 инвалидируется (rotation).
+
+`POST /auth/wireguard`:
+
+```json
+{ "wg_public_key": "<base64 public key>" }
+```
+
+Заголовок `Authorization: Bearer <access_token>`. Возвращает новый
+WireGuard-профиль и перевыпускает peer. Если сервер запущен с
+`--disable-wireguard`, вернёт `503`.
 
 `POST /auth/logout`:
 
@@ -830,6 +860,10 @@ adb reverse tcp:8443 tcp:8443
 - Startup-гейт: при валидной сессии логин не мелькает, сразу основной экран.
 - Auth: вход `demo/demo`, access + refresh, продление сессии при истёкшем
   access и серверный logout с удалением токена проверены.
+- HTTPS: login/refresh/logout прошли по TLS; приложение доверяет только
+  локальному CA из `auth_ca.pem`.
+- WireGuard-профиль: приходит автоматически при login и обновляется кнопкой
+  «Обновить»; вставлять `.conf` вручную не нужно.
 - Reconnect: при выключении/включении Wi-Fi сервис сделал несколько попыток
   с backoff и восстановил туннель.
 - WireGuard provisioning: auth-сервер под root добавил peer `10.66.0.3`,
@@ -865,8 +899,9 @@ adb reverse tcp:8443 tcp:8443
 - **Секреты в DataStore.** Access/refresh-токены и WireGuard-конфиг
   шифруются ключом Android Keystore; PSK не показывается в UI. `allowBackup`
   отключён, но общего аудита и ротации ключей нет.
-- **Auth-сервер использует HTTP без TLS.** Только для доверенной тестовой сети;
-  в приложении включён `usesCleartextTraffic`.
+- **TLS с локальным CA.** Сертификат самоподписанный, приложение доверяет
+  только `auth_ca.pem`. Для публичного сервера нужен нормальный CA и
+  управление ротацией сертификатов.
 - **Один активный refresh и один peer на пользователя.** Повторный логин
   заменяет предыдущий; несколько устройств одновременно не поддерживаются.
 - **Logout best-effort.** Если сервер недоступен, локальные токены удаляются,
@@ -913,6 +948,7 @@ adb reverse tcp:8443 tcp:8443
 | [LoadVpnSettingsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoadVpnSettingsUseCase.kt) | загрузка настроек и проверка сессии |
 | [LoginUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/LoginUseCase.kt) | вход и сохранение выданного профиля |
 | [EnsureAuthSessionUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/EnsureAuthSessionUseCase.kt) | продление access через refresh |
+| [ProvisionWireGuardUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/ProvisionWireGuardUseCase.kt) | автоматическое получение WireGuard-профиля |
 | [VpnConnectionUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnConnectionUseCase.kt) | подключение/отключение и состояние |
 | [VpnLogsUseCase.kt](core/domain/src/main/kotlin/com/haruchka/testvpnapp/core/domain/usecase/VpnLogsUseCase.kt) | журнал приложения |
 | [VpnUseCaseModule.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/di/VpnUseCaseModule.kt) | Hilt-сборка use case-ов |
@@ -936,7 +972,9 @@ adb reverse tcp:8443 tcp:8443
 | [MainActivity.kt](app/src/main/java/com/haruchka/testvpnapp/MainActivity.kt) | `@AndroidEntryPoint`, Compose-экран |
 | [guardwire-demo-server.py](tools/guardwire-demo-server.py) | минимальный сервер для проверки handshake и кадров |
 | [guardwire_crypto.py](tools/guardwire_crypto.py) | серверная и клиентская криптография GuardWire/2 |
-| [guardwire-auth-server.py](tools/guardwire-auth-server.py) | логин/пароль, токены и WireGuard provisioning |
+| [guardwire-auth-server.py](tools/guardwire-auth-server.py) | HTTPS, логин/пароль, access/refresh, WireGuard provisioning |
+| [gen-auth-cert.sh](tools/gen-auth-cert.sh) | локальный CA и TLS-сертификат для auth-сервера |
+| [auth_ca.pem](core/data/src/main/res/raw/auth_ca.pem) | trust anchor для HTTPS auth-сервера |
 | [guardwire-linux-server.py](tools/guardwire-linux-server.py) | Linux TUN + NAT: реальный интернет через VPN |
 | [wireguard-server-setup.sh](tools/wireguard-server-setup.sh) | разовая настройка тестового WireGuard-сервера |
 | [theory.md](theory.md) | пошаговый путь от демо к production-VPN |

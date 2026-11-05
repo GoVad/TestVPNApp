@@ -16,7 +16,11 @@
 Запуск с выдачей WireGuard-конфига (нужен root и поднятый wg0):
     sudo python3 tools/guardwire-auth-server.py --user demo:demo --wg-interface wg0
 
-HTTP без TLS предназначен только для теста в доверенной локальной сети.
+По умолчанию сервер работает по HTTPS с локальным CA из
+tools/.guardwire-certs. Перед первым запуском:
+    ./tools/gen-auth-cert.sh 192.168.100.4
+
+Для отладки можно отключить TLS: --no-tls.
 """
 
 from __future__ import annotations
