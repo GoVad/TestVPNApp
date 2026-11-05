@@ -22,6 +22,7 @@
 - Auth: перед первым запуском `./tools/gen-auth-cert.sh <LAN_IP>`; сервер работает по HTTPS с локальным CA.
 - Auth: `python3 tools/guardwire-auth-server.py --port 8090 --user demo:demo --disable-wireguard` (для WireGuard — sudo + `--wg-interface wg0`). Access TTL 15 мин, refresh TTL 30 дней; logout отзывает сессию и peer.
 - Демо-сервер без NAT: `python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo`
+- One-command demo: `./tools/demo-up.sh` (HTTPS auth + GuardWire demo, без root).
 - Полный сервер с TUN+NAT (Linux, root): `sudo python3 tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo`
 - Python: `./tools/setup-python.sh` (venv + cryptography); WireGuard: `sudo ./tools/wireguard-server-setup.sh`.
 
@@ -69,3 +70,4 @@
 2. При изменениях UI/сервиса — `./gradlew :app:lintDebug`
 3. При изменениях permission/FGS/VPN — ручная проверка на API 34+.
 4. Убедись, что не появились новые untracked-артефакты сборки и IDE.
+5. CI: `.github/workflows/android.yml` — те же тесты, сборка и lint на push/PR.

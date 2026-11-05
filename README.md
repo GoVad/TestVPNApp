@@ -1,57 +1,116 @@
 # GuardWire VPN
 
-**Учебный VPN-клиент для Android.** Демонстрирует, как устроено собственное
-VPN-приложение: `VpnService`, TUN-интерфейс, foreground-сервис, два режима
-(учебный GuardWire/2 и реальный WireGuard), модульная архитектура и MVVM + Orbit MVI.
+[![Android CI](https://github.com/GoVad/TestVPNApp/actions/workflows/android.yml/badge.svg)](https://github.com/GoVad/TestVPNApp/actions/workflows/android.yml)
 
-> **Статус: демо.** В приложении два режима:
-> **«Упрощённая»** — учебный GuardWire/2 (ECDH P-256 + AES-GCM),
-> **«Реальная»** — официальная библиотека WireGuard (UDP, Noise_IK).
-> Оба режима не заменяют production-VPN, но реальный режим использует
-> проверенный протокол. Для интернета нужен сервер с маршрутизацией.
+**Android VPN pet project.** Не просто ещё один экран с кнопкой, а рабочий
+`VpnService`-клиент: TUN, foreground-сервис, два режима, auth с access/refresh,
+HTTPS, автоматическая выдача WireGuard-профиля, reconnect и always-on.
 
-Как перенести это в реальный проект — см. **[theory.md](theory.md)**.
+> **Это не production-VPN.** Проект показывает, как устроен VPN-клиент на
+> Android и какие решения нужны в реальном продукте. Учебный GuardWire/2 не
+> аудирован; реальный режим использует официальную библиотеку WireGuard.
 
-## Быстрый старт
+## Скриншоты
+
+| Вход | Подключение |
+|------|-------------|
+| ![Вход](docs/screenshots/login.png) | ![Подключение](docs/screenshots/main.png) |
+| **WireGuard-профиль** | **Логи и reconnect** |
+| ![WireGuard](docs/screenshots/wireguard.png) | ![Логи](docs/screenshots/logs.png) |
+
+## Что демонстрирует
+
+- `VpnService` + TUN + маршруты + DNS + `protect(socket)`.
+- Два data plane: учебный GuardWire/2 и настоящий WireGuard через официальную
+  библиотеку.
+- Auth over HTTPS: access/refresh, ротация refresh, серверный logout и отзыв
+  WireGuard peer-а.
+- Секреты в DataStore, зашифрованном Android Keystore; PSK в UI не показывается.
+- Автоматическую выдачу WireGuard-профиля — без ручной вставки `.conf`.
+- Reconnect при смене/потере сети с backoff и always-on для GuardWire.
+- Модульную архитектуру: `feature → domain → data/vpn`, use case-и, Hilt, Orbit.
+- Тесты domain/use case-ов и протокола, CI на GitHub Actions.
+
+## Быстрый старт: demo без root
+
+Нужны JDK 17, Android SDK, Python 3 с `cryptography` и `openssl`.
 
 ```bash
-# 0. если cryptography ещё нет — создайте venv:
+# один раз: Python venv с cryptography
 ./tools/setup-python.sh
-#    и далее используйте .venv/bin/python вместо python3
 
-# 1. поднять полноценный тестовый VPN-сервер (Linux, нужен root)
-sudo python3 tools/guardwire-linux-server.py --host 0.0.0.0 --port 8443 --token demo
-# если включён ufw: sudo ufw allow 8443/tcp
+# поднять HTTPS auth + GuardWire demo и сгенерировать локальный сертификат
+./tools/demo-up.sh
 
-# 2. собрать приложение
+# собрать и установить APK
 ./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Если `cryptography` уже установлен в системном Python, venv не обязателен:
-проверьте `python3 -c "import cryptography"` и запускайте через `python3`.
-Если пакета нет — `./tools/setup-python.sh` и `.venv/bin/python`.
-Не используйте `pip install --break-system-packages`.
+Скрипт напечатает:
 
-Телефон и ПК должны быть в одной локальной сети. Сервер напечатает LAN-адрес
-компьютера — его и укажите в приложении вместе с портом `8443` и токеном
-`demo`.
-
-Для реального режима поднимите WireGuard-сервер на этом же ПК:
-
-```bash
-sudo apt install wireguard-tools
-sudo ./tools/wireguard-server-setup.sh
-# клиентский конфиг: ~/guardwire-wireguard/phone.conf
+```text
+Auth (HTTPS):  https://192.168.100.4:8090
+GuardWire:     192.168.100.4:8444
+Логин:         demo / demo
 ```
 
-Если нужен только handshake и проверка GuardWire без маршрутизации:
+В приложении:
 
-```bash
-python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
+- auth-сервер: `https://<LAN_IP>:8090`;
+- логин/пароль: `demo / demo`;
+- в GuardWire-режиме host — `<LAN_IP>`, порт — `8444`.
+
+Demo-сервер проверяет handshake, кадры и UI, но не маршрутизирует интернет.
+`demo-up.sh` запускает GuardWire-режим; для реального WireGuard нужен
+auth-сервер с `--wg-interface wg0` и поднятый WireGuard-сервер (см. ниже).
+Для реального NAT ниже есть полный Linux-сервер.
+
+## Архитектура
+
+```text
+:app
+ ├── :feature:vpn → :core:domain → :core:model
+ ├── :core:data   → :core:domain
+ └── :core:vpn    → :core:domain
+                  → :core:protocol → :core:model
 ```
 
-Для эмулятора host — `10.0.2.2`. Для физического устройства по USB можно
-выполнить `adb reverse tcp:8443 tcp:8443` и указать host `127.0.0.1`.
+UI вызывает use case-и из `:core:domain`, а Hilt связывает контракты с
+реализациями в `:core:data` и `:core:vpn`. Подробнее — раздел
+[«Архитектура»](#5-архитектура).
+
+## Что уже работает
+
+| Область | Статус |
+|---------|--------|
+| `VpnService`, TUN, foreground, `onRevoke` | ✅ |
+| GuardWire/2 и реальный WireGuard | ✅ |
+| HTTPS auth, access/refresh, logout/revoke | ✅ |
+| Автоматический WireGuard-профиль | ✅ |
+| Keystore-шифрование секретов | ✅ |
+| Reconnect при смене сети | ✅ |
+| Always-on | ✅ для GuardWire |
+| Split tunneling, kill switch | ❌ осознанно вне демо |
+| Несколько устройств, БД, control plane | ❌ вне демо |
+
+## Документация
+
+- [README.md](README.md) — как всё устроено и как запускать.
+- [theory.md](theory.md) — путь от демо к production-VPN: сервер, DNS, routes,
+  lifecycle, backend, тестирование.
+- [core/protocol](core/protocol) — учебный GuardWire/2.
+- [tools](tools) — auth-сервер, demo-сервер, полный Linux-сервер, WireGuard setup.
+
+## Чему я научился и что хочу делать дальше
+
+Проект стал упражнением в Android-платформе и смежных слоях: `VpnService`,
+сетевые маршруты, криптографический handshake, lifecycle foreground-сервиса,
+auth-сессии, хранение секретов, reconnect и архитектура с use case-ами.
+
+Следующие production-шаги, которые мне интересны: control plane с БД и
+несколькими устройствами, kill switch/split tunneling, нормальный CA и
+ротация сертификатов, тесты сервиса и process death, CI/CD и staged rollout.
 
 ---
 
@@ -80,7 +139,7 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 - Защита от всех активных атак и формальный аудит протокола.
 - Обфускация трафика.
 - Полноценный tun2socks на клиенте: NAT выполняет Linux-сервер.
-- IPv6, split tunneling, always-on VPN, DNS leak protection.
+- IPv6, split tunneling, kill switch, DNS leak protection.
 - Публикация в Google Play.
 
 ---
@@ -89,17 +148,18 @@ python3 tools/guardwire-demo-server.py --host 0.0.0.0 --port 8443 --token demo
 
 ### 2.1. Первое подключение
 
-1. Пользователь открывает приложение.
-2. Вводит host/IP, порт и токен GuardWire-сервера.
-3. Нажимает «Подключиться».
-4. Приложение запрашивает разрешение на уведомления (Android 13+).
-5. Приложение показывает системный диалог согласия на VPN.
-6. После согласия запускается foreground-сервис, устанавливается GuardWire-
-   соединение, создаётся TUN.
-7. UI показывает статус «Защищено», время сессии, входящий/исходящий трафик и
-   журнал событий.
-8. В системном статус-баре появляется значок VPN, в шторке — уведомление с
-   кнопкой «Отключить».
+1. Пользователь открывает приложение и видит startup-гейт.
+2. Входит по логину/паролю на HTTPS auth-сервер.
+3. Получает access/refresh; для реального режима сервер сразу выдаёт
+   WireGuard-профиль.
+4. Выбирает режим и нажимает «Подключиться».
+5. Приложение запрашивает разрешение на уведомления (Android 13+).
+6. Приложение показывает системный диалог согласия на VPN.
+7. После согласия запускается foreground-сервис, устанавливается соединение,
+   создаётся TUN.
+8. UI показывает статус «Защищено», время сессии, трафик и журнал событий.
+9. В статус-баре появляется значок VPN, в шторке — уведомление с кнопкой
+   «Отключить».
 
 ### 2.2. Отключение
 
@@ -600,6 +660,17 @@ adb shell 'curl -s https://ifconfig.me; echo'
 
 ### Auth-сервер и вход
 
+Перед первым запуском сгенерируйте локальный CA и TLS-сертификат:
+
+```bash
+./tools/gen-auth-cert.sh 192.168.100.4
+```
+
+CA-сертификат копируется в `core/data/src/main/res/raw/auth_ca.pem`; приватные
+ключи лежат в `tools/.guardwire-certs/` и не попадают в git. Если LAN-IP
+меняется, перегенерируйте сертификат; APK пересобирать не нужно, пока CA
+остаётся тем же.
+
 Для проверки только логина и GuardWire (без прав root):
 
 ```bash
@@ -616,16 +687,6 @@ python3 tools/guardwire-demo-server.py \
     --host 0.0.0.0 --port 8443 \
     --auth-token-file tools/.guardwire-token
 ```
-
-Перед первым запуском сгенерируйте локальный CA и TLS-сертификат:
-
-```bash
-./tools/gen-auth-cert.sh 192.168.100.4
-```
-
-CA-сертификат копируется в `core/data/src/main/res/raw/auth_ca.pem`; приватные
-ключи лежат в `tools/.guardwire-certs/` и не попадают в git. Если LAN-IP
-меняется, перегенерируйте сертификат и пересоберите APK.
 
 Для реального режима auth-сервер запускается с root и сам добавляет WireGuard peer:
 
@@ -824,6 +885,10 @@ adb reverse tcp:8443 tcp:8443
 ./gradlew :core:domain:test :core:protocol:test
 ```
 
+CI: [`.github/workflows/android.yml`](.github/workflows/android.yml) на каждый
+push/PR собирает APK, запускает domain/protocol-тесты и lint, а debug APK
+кладёт в artifact.
+
 Покрыто:
 
 - use case-и: валидация GuardWire-конфига, загрузка/продление сессии, logout;
@@ -931,7 +996,6 @@ adb reverse tcp:8443 tcp:8443
 - Серверный control plane с БД и несколькими устройствами.
 - Аудит криптографии и ротация ключей.
 - Тесты ViewModel с Orbit test-раннером.
-- CI: сборка, unit-тесты, lint.
 
 ---
 
