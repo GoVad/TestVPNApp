@@ -5,7 +5,7 @@
 `GuardWire VPN` — учебное Android-приложение, демонстрирующее собственный VPN-клиент:
 `VpnService` + TUN, GuardWire/2 и WireGuard, foreground-сервис, модульная архитектура, Hilt и MVVM + Orbit MVI.
 
-Спецификация: `README.md`; путь к production: `theory.md`.
+Спецификация: `README.md`. Локальные production-заметки: `theory.md` (не коммитится).
 
 ## Стек и окружение
 
