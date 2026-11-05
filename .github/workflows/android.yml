@@ -26,13 +26,18 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses >/dev/null || true
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
+          echo "Using sdkmanager: $SDKMANAGER"
 
-      - name: Install SDK packages
-        run: sdkmanager --install "platforms;android-37" "build-tools;37.0.0"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
