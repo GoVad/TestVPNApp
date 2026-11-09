@@ -16,7 +16,7 @@ import javax.inject.Singleton
 /**
  * Единственный источник состояния VPN-движка в процессе приложения.
  *
- * [GuardWireVpnService] и WireGuard-контроллер пишут сюда, а `VpnController`
+ * `GuardWireVpnService` и `WireGuardController` пишут сюда, а `VpnController`
  * и UI читают.
  */
 @Singleton

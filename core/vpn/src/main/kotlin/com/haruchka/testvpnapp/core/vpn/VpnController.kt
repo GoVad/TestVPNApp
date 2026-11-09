@@ -9,15 +9,16 @@ import com.haruchka.testvpnapp.core.domain.VpnSession
 import com.haruchka.testvpnapp.core.domain.VpnStateRepository
 import com.haruchka.testvpnapp.core.domain.WireGuardEngine
 import com.haruchka.testvpnapp.core.model.VpnMode
+import com.haruchka.testvpnapp.core.vpn.guardwire.GuardWireVpnService
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Фасад над [GuardWireVpnService] для UI-слоя.
+ * Фасад над обоими VPN-движками для UI-слоя.
  *
- * Отвечает за запрос согласия системы, запуск foreground-сервиса и чтение
- * состояния. Сама логика туннеля живёт в сервисе.
+ * GuardWire запускается как foreground-сервис, WireGuard делегируется
+ * [WireGuardEngine]. Сама логика туннелей живёт в отдельных модулях.
  */
 @Singleton
 class VpnController @Inject constructor(

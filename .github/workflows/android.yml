@@ -49,7 +49,7 @@ jobs:
         run: >-
           ./gradlew
           :core:domain:test
-          :core:protocol:test
+          :core:guardwire-protocol:test
           :app:assembleDebug
           :app:lintDebug
           --no-daemon

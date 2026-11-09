@@ -1,6 +1,6 @@
 package com.haruchka.testvpnapp.core.model
 
-/** Счётчики трафика, которые ведёт TUN ↔ GuardWire-мост. */
+/** Счётчики трафика, которые ведёт VPN-движок. */
 data class VpnTrafficStats(
     val bytesIn: Long = 0,
     val bytesOut: Long = 0,

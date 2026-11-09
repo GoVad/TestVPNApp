@@ -20,9 +20,10 @@ to it from README or treat it as part of the public repository.
 - Compose BOM 2026.02.01, Orbit 12.0.1, WireGuard 1.0.20260102, Hilt 2.60.1 + KSP.
 - `compileSdk 37`, `targetSdk 36`, `minSdk 24`.
 - Modules: `:app`, `:feature:vpn`, `:core:domain`, `:core:data`, `:core:vpn`,
-  `:core:protocol`, `:core:model`.
-- `:core:model`, `:core:domain` and `:core:protocol` are pure Kotlin/JVM and must
-  not depend on Android APIs.
+  `:core:vpn:guardwire`, `:core:vpn:wireguard`, `:core:guardwire-protocol`,
+  `:core:model`.
+- `:core:model`, `:core:domain` and `:core:guardwire-protocol` are pure
+  Kotlin/JVM and must not depend on Android APIs.
 - Python 3 plus `cryptography` for local servers.
 - `openssl` for the local HTTPS certificate.
 
@@ -31,7 +32,7 @@ to it from README or treat it as part of the public repository.
 Build, tests and lint:
 
 ```bash
-./gradlew :core:domain:test :core:protocol:test :app:assembleDebug :app:lintDebug
+./gradlew :core:domain:test :core:guardwire-protocol:test :app:assembleDebug :app:lintDebug
 ```
 
 Install:
@@ -132,15 +133,23 @@ Dependency direction:
 ```text
 app -> feature:vpn -> core:domain -> core:model
 app -> core:data   -> core:domain
-app -> core:vpn    -> core:domain
-                   -> core:protocol -> core:model
+app -> core:vpn    -> core:vpn:guardwire -> core:guardwire-protocol -> core:model
+                   -> core:vpn:wireguard
+                   -> core:domain
 ```
 
 - `core:domain`: contracts, domain models and use cases. No Android.
 - `core:data`: DataStore/Keystore, auth HTTP client, store implementations.
-- `core:vpn`: `VpnService`, TUN, WireGuard, notifications and platform code.
+- `core:vpn`: thin `VpnSession` facade and DI composition of both engines.
+- `core:vpn:guardwire`: educational GuardWire/2 engine: `VpnService`, TUN,
+  always-on, reconnect and foreground notification.
+- `core:vpn:wireguard`: real WireGuard engine: `GoBackend`, config parsing and
+  its foreground notification.
 - `feature:vpn`: Compose UI, Orbit ViewModel and side effects.
 - `app`: Hilt entry point and activity.
+
+The engines must not depend on each other. Only `:core:vpn` knows both and picks
+the implementation for `VpnSession`.
 
 Do not leak Android, Compose or `VpnService` into lower layers. Do not break the
 dependency direction.
@@ -168,7 +177,7 @@ GuardWireVpnService / WireGuardController
 - UI strings live in `strings.xml`: English is the default locale, Russian is in
   `values-ru/strings.xml`.
 - Diagnostic strings in Android modules are English-only `strings.xml`.
-- `core:protocol` is pure JVM, so its internal exception messages are English
+- `core:guardwire-protocol` is pure JVM, so its internal exception messages are English
   constants instead of Android resources.
 - Keep code comments in Russian. Use English identifiers.
 - Do not hardcode user-facing strings in Compose or ViewModels.
@@ -211,7 +220,7 @@ GuardWireVpnService / WireGuardController
 
 ## Checks before finishing a task
 
-1. `./gradlew :core:domain:test :core:protocol:test :app:assembleDebug`
+1. `./gradlew :core:domain:test :core:guardwire-protocol:test :app:assembleDebug`
 2. For UI/service changes: `./gradlew :app:lintDebug`
 3. For permission/FGS/VPN changes: manual check on API 34+.
 4. Do not leave new untracked build or IDE artifacts.

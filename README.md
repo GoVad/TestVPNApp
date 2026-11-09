@@ -55,12 +55,15 @@ WireGuard-профиля, reconnect и always-on.
  ├── :feature:vpn → :core:domain → :core:model
  ├── :core:data   → :core:domain
  └── :core:vpn    → :core:domain
-                  → :core:protocol → :core:model
+                  ├── :core:vpn:guardwire → :core:guardwire-protocol → :core:model
+                  └── :core:vpn:wireguard
 ```
 
 - `:core:domain` — контракты, модели и use case-и без Android.
 - `:core:data` — DataStore/Keystore, auth-клиент, реализация store-контрактов.
-- `:core:vpn` — `VpnService`, TUN, WireGuard, уведомления.
+- `:core:vpn` — тонкий фасад `VpnSession` и DI-сборка движков.
+- `:core:vpn:guardwire` — учебный GuardWire/2: `VpnService`, TUN, always-on, reconnect.
+- `:core:vpn:wireguard` — реальный WireGuard: `GoBackend`, разбор конфига, foreground-уведомление.
 - `:feature:vpn` — Compose-экран, Orbit ViewModel, side effects.
 
 ## Быстрый старт: demo без root
@@ -160,7 +163,7 @@ CA при этом переиспользуется, поэтому APK пере
 ## Тесты и CI
 
 ```bash
-./gradlew :core:domain:test :core:protocol:test :app:assembleDebug :app:lintDebug
+./gradlew :core:domain:test :core:guardwire-protocol:test :app:assembleDebug :app:lintDebug
 ```
 
 CI: [`.github/workflows/android.yml`](.github/workflows/android.yml) собирает
@@ -168,10 +171,10 @@ APK, запускает domain/protocol-тесты и lint на push/PR.
 
 ## Что посмотреть в коде
 
-- [GuardWireVpnService.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireVpnService.kt) — TUN, always-on, reconnect.
-- [GuardWireTunnel.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/GuardWireTunnel.kt) — TUN ↔ GuardWire.
-- [WireGuardController.kt](core/vpn/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/WireGuardController.kt) — реальный режим.
+- [GuardWireVpnService.kt](core/vpn/guardwire/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/guardwire/GuardWireVpnService.kt) — TUN, always-on, reconnect.
+- [GuardWireTunnel.kt](core/vpn/guardwire/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/guardwire/GuardWireTunnel.kt) — TUN ↔ GuardWire.
+- [WireGuardController.kt](core/vpn/wireguard/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/wireguard/WireGuardController.kt) — реальный режим.
 - [AuthRepository.kt](core/data/src/main/kotlin/com/haruchka/testvpnapp/core/data/AuthRepository.kt) — HTTPS auth-клиент.
 - [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) — Orbit + use case-и.
-- [core/protocol](core/protocol/src/main/kotlin/com/haruchka/testvpnapp/core/protocol) — GuardWire/2.
+- [core/guardwire-protocol](core/guardwire-protocol/src/main/kotlin/com/haruchka/testvpnapp/core/guardwire/protocol) — GuardWire/2.
 - [tools](tools) — demo, auth, Linux NAT и WireGuard setup.

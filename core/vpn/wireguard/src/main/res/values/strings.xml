@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wireguard_channel_name">GuardWire WireGuard</string>
+    <string name="wireguard_channel_description">Notification for the active WireGuard tunnel</string>
+    <string name="wireguard_notification_title">GuardWire · WireGuard</string>
+    <string name="wireguard_notification_connecting">Connecting WireGuard…</string>
+    <string name="wireguard_notification_connected">WireGuard tunnel is active</string>
+    <string name="wireguard_notification_disconnect">Disconnect</string>
+    <string name="log_wireguard_connecting">WireGuard: connecting…</string>
+    <string name="log_wireguard_notification_failed">WireGuard: failed to show notification</string>
+    <string name="error_wireguard_connect_failed">WireGuard: %1$s</string>
+    <string name="error_wireguard_connect_generic">failed to connect</string>
+    <string name="log_wireguard_disconnecting">WireGuard: disconnecting…</string>
+    <string name="log_wireguard_tunnel_established">WireGuard: tunnel established</string>
+    <string name="log_wireguard_tunnel_disconnected">WireGuard: tunnel disconnected</string>
+    <string name="error_wireguard_invalid_config">Invalid WireGuard config</string>
+    <string name="wg_parser_empty">WireGuard config is empty</string>
+    <string name="wg_parser_failed">Failed to parse WireGuard config: %1$s</string>
+    <string name="wg_parser_ipv6">IPv6 is disabled in this app: remove IPv6 addresses, DNS, AllowedIPs and IPv6 endpoint from the config</string>
+</resources>
