@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selfmadeguard_channel_name">SelfMadeGuard VPN</string>
+    <string name="selfmadeguard_channel_description">Постоянное уведомление активного VPN-туннеля</string>
+    <string name="selfmadeguard_notification_title">SelfMadeGuard</string>
+    <string name="selfmadeguard_notification_preparing">Подготовка туннеля…</string>
+    <string name="selfmadeguard_notification_connecting">Подключение к %1$s…</string>
+    <string name="selfmadeguard_notification_connected">Туннель активен: %1$s</string>
+    <string name="selfmadeguard_notification_disconnect">Отключить</string>
+</resources>

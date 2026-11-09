@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="wireguard_channel_name">GuardWire WireGuard</string>
+    <string name="wireguard_channel_name">SelfMadeGuard WireGuard</string>
     <string name="wireguard_channel_description">Уведомление активного WireGuard-туннеля</string>
-    <string name="wireguard_notification_title">GuardWire · WireGuard</string>
+    <string name="wireguard_notification_title">SelfMadeGuard · WireGuard</string>
     <string name="wireguard_notification_connecting">Подключение WireGuard…</string>
     <string name="wireguard_notification_connected">WireGuard-туннель активен</string>
     <string name="wireguard_notification_disconnect">Отключить</string>

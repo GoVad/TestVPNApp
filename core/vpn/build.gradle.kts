@@ -23,7 +23,7 @@ android {
 dependencies {
     api(project(":core:model"))
     implementation(project(":core:domain"))
-    implementation(project(":core:vpn:guardwire"))
+    implementation(project(":core:vpn:selfmadeguard"))
     implementation(project(":core:vpn:wireguard"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)

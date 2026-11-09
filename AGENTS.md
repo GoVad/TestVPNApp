@@ -2,11 +2,11 @@
 
 ## Repository purpose
 
-`GuardWire VPN` is an educational Android VPN client. It demonstrates:
+`SelfMadeGuard VPN` is an educational Android VPN client. It demonstrates:
 
 - `VpnService` + TUN, routes, DNS and `protect(socket)`;
 - foreground service, `onRevoke` and notification actions;
-- an educational GuardWire/2 protocol and a real WireGuard mode;
+- an educational SelfMadeGuard/2 protocol and a real WireGuard mode;
 - modular architecture, Hilt, MVVM + Orbit MVI and use cases.
 
 Public documentation: `README.md`.
@@ -20,9 +20,9 @@ to it from README or treat it as part of the public repository.
 - Compose BOM 2026.02.01, Orbit 12.0.1, WireGuard 1.0.20260102, Hilt 2.60.1 + KSP.
 - `compileSdk 37`, `targetSdk 36`, `minSdk 24`.
 - Modules: `:app`, `:feature:vpn`, `:core:domain`, `:core:data`, `:core:vpn`,
-  `:core:vpn:guardwire`, `:core:vpn:wireguard`, `:core:guardwire-protocol`,
+  `:core:vpn:selfmadeguard`, `:core:vpn:wireguard`, `:core:selfmadeguard-protocol`,
   `:core:model`.
-- `:core:model`, `:core:domain` and `:core:guardwire-protocol` are pure
+- `:core:model`, `:core:domain` and `:core:selfmadeguard-protocol` are pure
   Kotlin/JVM and must not depend on Android APIs.
 - Python 3 plus `cryptography` for local servers.
 - `openssl` for the local HTTPS certificate.
@@ -32,7 +32,7 @@ to it from README or treat it as part of the public repository.
 Build, tests and lint:
 
 ```bash
-./gradlew :core:domain:test :core:guardwire-protocol:test :app:assembleDebug :app:lintDebug
+./gradlew :core:domain:test :core:selfmadeguard-protocol:test :app:assembleDebug :app:lintDebug
 ```
 
 Install:
@@ -47,20 +47,20 @@ Python environment:
 ./tools/setup-python.sh
 ```
 
-One-command GuardWire demo without root:
+One-command SelfMadeGuard demo without root:
 
 ```bash
 ./tools/demo-up.sh
 ```
 
-Defaults: auth on `8090`, GuardWire demo on `8444`. Override ports if needed:
+Defaults: auth on `8090`, SelfMadeGuard demo on `8444`. Override ports if needed:
 
 ```bash
 AUTH_PORT=8091 DEMO_PORT=8444 ./tools/demo-up.sh
 ```
 
 The demo script uses a separate token file
-`tools/.guardwire-demo-token` and does not route internet traffic.
+`tools/.selfmadeguard-demo-token` and does not route internet traffic.
 
 HTTPS certificate:
 
@@ -68,14 +68,14 @@ HTTPS certificate:
 ./tools/gen-auth-cert.sh <LAN_IP>
 ```
 
-This writes local keys to `tools/.guardwire-certs/` and copies the public CA to
+This writes local keys to `tools/.selfmadeguard-certs/` and copies the public CA to
 `core/data/src/main/res/raw/auth_ca.pem`. If the LAN IP changes, rerun the script;
 the APK does not need rebuilding while the CA stays the same.
 
 Auth/control-plane server:
 
 ```bash
-python3 tools/guardwire-auth-server.py \
+python3 tools/selfmadeguard-auth-server.py \
     --host 0.0.0.0 --port 8090 \
     --user demo:demo --disable-wireguard
 ```
@@ -91,7 +91,7 @@ Real WireGuard provisioning:
 ```bash
 sudo ./tools/wireguard-server-setup.sh
 
-sudo python3 tools/guardwire-auth-server.py \
+sudo python3 tools/selfmadeguard-auth-server.py \
     --host 0.0.0.0 --port 8090 \
     --user demo:demo \
     --wg-interface wg0 \
@@ -101,26 +101,26 @@ sudo python3 tools/guardwire-auth-server.py \
 The auth server provisions the WireGuard peer and the client fetches its profile
 via `POST /auth/wireguard`. Manual `.conf` paste is not part of the UI flow.
 
-GuardWire demo server with a static PSK:
+SelfMadeGuard demo server with a static PSK:
 
 ```bash
-python3 tools/guardwire-demo-server.py \
+python3 tools/selfmadeguard-demo-server.py \
     --host 0.0.0.0 --port 8443 --token demo
 ```
 
-Full Linux GuardWire server with TUN + NAT, static PSK:
+Full Linux SelfMadeGuard server with TUN + NAT, static PSK:
 
 ```bash
-sudo python3 tools/guardwire-linux-server.py \
+sudo python3 tools/selfmadeguard-linux-server.py \
     --host 0.0.0.0 --port 8443 --token demo
 ```
 
-Full Linux GuardWire server with the token issued by the auth server:
+Full Linux SelfMadeGuard server with the token issued by the auth server:
 
 ```bash
-sudo python3 tools/guardwire-linux-server.py \
+sudo python3 tools/selfmadeguard-linux-server.py \
     --host 0.0.0.0 --port 8443 \
-    --auth-token-file tools/.guardwire-token
+    --auth-token-file tools/.selfmadeguard-token
 ```
 
 Do not mix these modes: a server started with `--token demo` will reject the
@@ -133,7 +133,7 @@ Dependency direction:
 ```text
 app -> feature:vpn -> core:domain -> core:model
 app -> core:data   -> core:domain
-app -> core:vpn    -> core:vpn:guardwire -> core:guardwire-protocol -> core:model
+app -> core:vpn    -> core:vpn:selfmadeguard -> core:selfmadeguard-protocol -> core:model
                    -> core:vpn:wireguard
                    -> core:domain
 ```
@@ -141,7 +141,7 @@ app -> core:vpn    -> core:vpn:guardwire -> core:guardwire-protocol -> core:mode
 - `core:domain`: contracts, domain models and use cases. No Android.
 - `core:data`: DataStore/Keystore, auth HTTP client, store implementations.
 - `core:vpn`: thin `VpnSession` facade and DI composition of both engines.
-- `core:vpn:guardwire`: educational GuardWire/2 engine: `VpnService`, TUN,
+- `core:vpn:selfmadeguard`: educational SelfMadeGuard/2 engine: `VpnService`, TUN,
   always-on, reconnect and foreground notification.
 - `core:vpn:wireguard`: real WireGuard engine: `GoBackend`, config parsing and
   its foreground notification.
@@ -157,7 +157,7 @@ dependency direction.
 State flow:
 
 ```text
-GuardWireVpnService / WireGuardController
+SelfMadeGuardVpnService / WireGuardController
   -> VpnStateStore
   -> VpnConnectionUseCase.observeState()
   -> VpnViewModel
@@ -177,7 +177,7 @@ GuardWireVpnService / WireGuardController
 - UI strings live in `strings.xml`: English is the default locale, Russian is in
   `values-ru/strings.xml`.
 - Diagnostic strings in Android modules are English-only `strings.xml`.
-- `core:guardwire-protocol` is pure JVM, so its internal exception messages are English
+- `core:selfmadeguard-protocol` is pure JVM, so its internal exception messages are English
   constants instead of Android resources.
 - Keep code comments in Russian. Use English identifiers.
 - Do not hardcode user-facing strings in Compose or ViewModels.
@@ -186,22 +186,22 @@ GuardWireVpnService / WireGuardController
 
 - The tunnel socket must pass through `VpnService.protect()` **before** `connect()`,
   otherwise its packets enter the app's own TUN.
-- `GuardWireVpnService` must call `startForeground` in `onCreate`/`onStartCommand`.
+- `SelfMadeGuardVpnService` must call `startForeground` in `onCreate`/`onStartCommand`.
   On API 34+ use the `specialUse` FGS type and `FOREGROUND_SERVICE_SPECIAL_USE`.
 - The VPN service is declared with
   `android:permission="android.permission.BIND_VPN_SERVICE"` and is an
   `@AndroidEntryPoint`. Do not override the WireGuard library service.
 - Hilt: use `@HiltAndroidApp`, `@HiltViewModel`, `@AndroidEntryPoint`. KSP requires
   `android.disallowKotlinSourceSets=false` with AGP 9.
-- GuardWire frame writes are synchronized. Payloads use AES-256-GCM; the frame
+- SelfMadeGuard frame writes are synchronized. Payloads use AES-256-GCM; the frame
   type is authenticated as AAD; every frame has a random IV.
-- The access token is the GuardWire handshake PSK. Never log or expose it.
+- The access token is the SelfMadeGuard handshake PSK. Never log or expose it.
 - If handshake/crypto changes, update the Kotlin and Python servers together and
-  update `GuardWireCodecTest`, `GuardWireCryptoTest`, `GuardWireClientTest`.
+  update `SelfMadeGuardCodecTest`, `SelfMadeGuardCryptoTest`, `SelfMadeGuardClientTest`.
 - After blocking I/O during cancellation, call `ensureActive()` and close the
   socket/TUN.
 - IPv6 is intentionally not routed; WireGuard configs containing IPv6 are rejected.
-- Always-on is implemented for GuardWire only. The real WireGuard mode uses the
+- Always-on is implemented for SelfMadeGuard only. The real WireGuard mode uses the
   library's own `VpnService`.
 - WireGuard peers are added to the live `wg0` interface but are not persisted in
   `/etc/wireguard/wg0.conf`. After a host reboot, log in again or re-provision.
@@ -210,9 +210,9 @@ GuardWireVpnService / WireGuardController
 
 - Never commit `local.properties`, `.idea/`, `build/`, `*.jks`, `*.keystore` or
   signing files.
-- `tools/.guardwire-certs/` contains local private keys and must stay untracked.
+- `tools/.selfmadeguard-certs/` contains local private keys and must stay untracked.
   Only `core/data/src/main/res/raw/auth_ca.pem` is public.
-- GuardWire/2 uses ECDH P-256 + AES-256-GCM, but it is an unaudited educational
+- SelfMadeGuard/2 uses ECDH P-256 + AES-256-GCM, but it is an unaudited educational
   scheme. Never present it as production VPN security.
 - Access/refresh tokens and the WireGuard config are encrypted with Android
   Keystore and stored in DataStore. Do not log them.
@@ -220,7 +220,7 @@ GuardWireVpnService / WireGuardController
 
 ## Checks before finishing a task
 
-1. `./gradlew :core:domain:test :core:guardwire-protocol:test :app:assembleDebug`
+1. `./gradlew :core:domain:test :core:selfmadeguard-protocol:test :app:assembleDebug`
 2. For UI/service changes: `./gradlew :app:lintDebug`
 3. For permission/FGS/VPN changes: manual check on API 34+.
 4. Do not leave new untracked build or IDE artifacts.

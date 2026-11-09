@@ -25,10 +25,10 @@ dependencyResolutionManagement {
 rootProject.name = "TestVPNApp"
 include(":app")
 include(":core:model")
-include(":core:guardwire-protocol")
+include(":core:selfmadeguard-protocol")
 include(":core:domain")
 include(":core:data")
 include(":core:vpn")
-include(":core:vpn:guardwire")
+include(":core:vpn:selfmadeguard")
 include(":core:vpn:wireguard")
 include(":feature:vpn")

@@ -512,7 +512,7 @@ private fun EndpointCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = stringResource(R.string.guardwire_server_title),
+                text = stringResource(R.string.selfmadeguard_server_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -806,11 +806,11 @@ private fun AboutCard(mode: VpnMode) {
             when (mode) {
                 VpnMode.SIMPLIFIED -> {
                     Text(
-                        text = stringResource(R.string.about_guardwire_service),
+                        text = stringResource(R.string.about_selfmadeguard_service),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = stringResource(R.string.about_guardwire_data),
+                        text = stringResource(R.string.about_selfmadeguard_data),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

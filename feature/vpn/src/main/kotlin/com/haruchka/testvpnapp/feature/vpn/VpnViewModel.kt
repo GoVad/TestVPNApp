@@ -8,8 +8,8 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import com.haruchka.testvpnapp.core.domain.AuthSessionExpiredException
-import com.haruchka.testvpnapp.core.domain.usecase.GuardWireConfigError
-import com.haruchka.testvpnapp.core.domain.usecase.GuardWireConfigException
+import com.haruchka.testvpnapp.core.domain.usecase.SelfMadeGuardConfigError
+import com.haruchka.testvpnapp.core.domain.usecase.SelfMadeGuardConfigException
 import com.haruchka.testvpnapp.core.domain.usecase.LoginValidationException
 import com.haruchka.testvpnapp.core.domain.usecase.SessionStorageException
 import com.haruchka.testvpnapp.core.domain.usecase.WireGuardStorageException
@@ -18,7 +18,7 @@ import com.haruchka.testvpnapp.core.domain.usecase.LoadVpnSettingsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoginUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LogoutUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.ProvisionWireGuardUseCase
-import com.haruchka.testvpnapp.core.domain.usecase.ValidateGuardWireConfigUseCase
+import com.haruchka.testvpnapp.core.domain.usecase.ValidateSelfMadeGuardConfigUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnConnectionUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnLogsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnSettingsUseCase
@@ -48,7 +48,7 @@ class VpnViewModel @Inject constructor(
     private val login: LoginUseCase,
     private val logout: LogoutUseCase,
     private val connection: VpnConnectionUseCase,
-    private val validateGuardWireConfig: ValidateGuardWireConfigUseCase,
+    private val validateSelfMadeGuardConfig: ValidateSelfMadeGuardConfigUseCase,
     private val provisionWireGuard: ProvisionWireGuardUseCase,
     private val settings: VpnSettingsUseCase,
     private val logs: VpnLogsUseCase,
@@ -98,9 +98,9 @@ class VpnViewModel @Inject constructor(
                 reduce {
                     state.copy(
                         mode = loaded.mode,
-                        host = loaded.guardWire.host,
-                        port = loaded.guardWire.port.toString(),
-                        token = if (isLoggedIn) accessToken else loaded.guardWire.token,
+                        host = loaded.selfMadeGuard.host,
+                        port = loaded.selfMadeGuard.port.toString(),
+                        token = if (isLoggedIn) accessToken else loaded.selfMadeGuard.token,
                         isLoggedIn = isLoggedIn,
                         username = username,
                         authBaseUrl = loaded.authBaseUrl,
@@ -171,7 +171,7 @@ class VpnViewModel @Inject constructor(
 
         when (state.mode) {
             VpnMode.SIMPLIFIED -> {
-                val validation = validateGuardWireConfig(
+                val validation = validateSelfMadeGuardConfig(
                     host = state.host,
                     port = state.port,
                     token = auth.accessToken,
@@ -179,27 +179,27 @@ class VpnViewModel @Inject constructor(
                 val config = validation.getOrNull()
                 if (config == null) {
                     val error = validation.exceptionOrNull()
-                    val message = if (error is GuardWireConfigException) {
+                    val message = if (error is SelfMadeGuardConfigException) {
                         when (error.reason) {
-                            GuardWireConfigError.HOST_EMPTY ->
+                            SelfMadeGuardConfigError.HOST_EMPTY ->
                                 appContext.getString(R.string.validation_host_empty)
-                            GuardWireConfigError.PORT_INVALID ->
+                            SelfMadeGuardConfigError.PORT_INVALID ->
                                 appContext.getString(R.string.validation_port_invalid)
-                            GuardWireConfigError.TOKEN_EMPTY ->
+                            SelfMadeGuardConfigError.TOKEN_EMPTY ->
                                 appContext.getString(R.string.validation_psk_empty)
                         }
                     } else {
                         error?.message
-                            ?: appContext.getString(R.string.vm_guardwire_settings_invalid)
+                            ?: appContext.getString(R.string.vm_selfmadeguard_settings_invalid)
                     }
                     reduce { state.copy(inputError = message) }
                     postSideEffect(VpnSideEffect.ShowMessage(message))
                     return@intent
                 }
 
-                settings.saveGuardWire(config)
-                    .onFailure { logs.append(appContext.getString(R.string.vm_guardwire_settings_save_failed)) }
-                pending = PendingConnection.GuardWire(config)
+                settings.saveSelfMadeGuard(config)
+                    .onFailure { logs.append(appContext.getString(R.string.vm_selfmadeguard_settings_save_failed)) }
+                pending = PendingConnection.SelfMadeGuard(config)
                 reduce {
                     state.copy(
                         host = config.host,
@@ -448,9 +448,9 @@ class VpnViewModel @Inject constructor(
 
     private suspend fun Syntax<VpnUiState, VpnSideEffect>.startTunnel() {
         when (val request = pending) {
-            is PendingConnection.GuardWire -> {
+            is PendingConnection.SelfMadeGuard -> {
                 pending = null
-                connection.connectGuardWire(request.config)
+                connection.connectSelfMadeGuard(request.config)
             }
 
             is PendingConnection.WireGuard -> {
@@ -472,7 +472,7 @@ class VpnViewModel @Inject constructor(
             ) != PackageManager.PERMISSION_GRANTED
 
     private sealed interface PendingConnection {
-        data class GuardWire(val config: VpnServerConfig) : PendingConnection
+        data class SelfMadeGuard(val config: VpnServerConfig) : PendingConnection
         data class WireGuard(val configText: String) : PendingConnection
     }
 

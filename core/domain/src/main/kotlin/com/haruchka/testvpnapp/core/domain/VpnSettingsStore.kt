@@ -9,7 +9,7 @@ interface VpnSettingsStore {
 
     suspend fun saveMode(mode: VpnMode)
 
-    suspend fun saveGuardWire(config: VpnServerConfig)
+    suspend fun saveSelfMadeGuard(config: VpnServerConfig)
 
     suspend fun saveWireGuardConfig(config: String)
 

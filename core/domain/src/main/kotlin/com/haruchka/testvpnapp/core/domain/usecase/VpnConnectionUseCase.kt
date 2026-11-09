@@ -14,7 +14,7 @@ class VpnConnectionUseCase(
 ) {
     fun observeState(): Flow<VpnRuntimeState> = session.state
 
-    fun connectGuardWire(config: VpnServerConfig) = session.connect(config)
+    fun connectSelfMadeGuard(config: VpnServerConfig) = session.connect(config)
 
     fun connectWireGuard(configText: String) = session.connectWireGuard(configText)
 

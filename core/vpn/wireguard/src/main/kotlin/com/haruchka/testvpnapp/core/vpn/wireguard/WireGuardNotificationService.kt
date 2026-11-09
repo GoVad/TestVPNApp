@@ -118,7 +118,7 @@ class WireGuardNotificationService : android.app.Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "guardwire_wireguard"
+        private const val CHANNEL_ID = "selfmadeguard_wireguard"
         private const val NOTIFICATION_ID = 1002
         private const val REQUEST_OPEN = 20
         private const val REQUEST_STOP = 21

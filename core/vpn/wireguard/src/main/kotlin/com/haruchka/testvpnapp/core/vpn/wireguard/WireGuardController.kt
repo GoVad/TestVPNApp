@@ -181,6 +181,6 @@ class WireGuardController @Inject constructor(
     }
 
     private companion object {
-        const val TUNNEL_NAME = "guardwire-real"
+        const val TUNNEL_NAME = "selfmadeguard-real"
     }
 }

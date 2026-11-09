@@ -1,7 +1,7 @@
 package com.haruchka.testvpnapp.core.model
 
 /**
- * Настройки подключения к GuardWire-серверу.
+ * Настройки подключения к SelfMadeGuard-серверу.
  *
  * [token] — PSK: общий секрет клиента и сервера. По сети он не передаётся,
  * а используется для HMAC-аутентификации handshake.

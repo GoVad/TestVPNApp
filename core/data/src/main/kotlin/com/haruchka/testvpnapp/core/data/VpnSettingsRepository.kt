@@ -29,7 +29,7 @@ private val Context.vpnSettingsDataStore by preferencesDataStore(name = "vpn_set
 /**
  * DataStore для настроек VPN.
  *
- * Не секретные поля (host, port, режим) лежат открыто; токен GuardWire и
+ * Не секретные поля (host, port, режим) лежат открыто; токен SelfMadeGuard и
  * WireGuard-конфиг (в нём приватный ключ) шифруются ключом Android Keystore.
  */
 @Singleton
@@ -45,7 +45,7 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
             ?: VpnMode.SIMPLIFIED
 
         val defaults = VpnServerConfig()
-        var guardWire = VpnServerConfig(
+        var selfMadeGuard = VpnServerConfig(
             host = prefs[KEY_HOST] ?: defaults.host,
             port = prefs[KEY_PORT] ?: defaults.port,
             token = prefs[KEY_TOKEN]?.let(cipher::decrypt) ?: defaults.token,
@@ -53,24 +53,24 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
 
         // Мягкая миграция со старого SharedPreferences-хранилища.
         if (prefs[KEY_HOST] == null) {
-            val legacy = legacyGuardWire()
+            val legacy = legacySelfMadeGuard()
             if (legacy != null) {
-                guardWire = legacy
-                saveGuardWire(legacy)
+                selfMadeGuard = legacy
+                saveSelfMadeGuard(legacy)
             }
         }
 
         val wireGuardConfig = prefs[KEY_WG_CONFIG]?.let(cipher::decrypt)
         VpnStoredSettings(
             mode = mode,
-            guardWire = guardWire,
+            selfMadeGuard = selfMadeGuard,
             wireGuardConfig = wireGuardConfig,
             authToken = prefs[KEY_AUTH_TOKEN]?.let(cipher::decrypt),
             authRefreshToken = prefs[KEY_AUTH_REFRESH_TOKEN]?.let(cipher::decrypt),
             authUsername = prefs[KEY_AUTH_USER],
             authExpiresAt = prefs[KEY_AUTH_EXPIRES]?.toLongOrNull() ?: 0L,
             authRefreshExpiresAt = prefs[KEY_AUTH_REFRESH_EXPIRES]?.toLongOrNull() ?: 0L,
-            authBaseUrl = (prefs[KEY_AUTH_URL] ?: "https://${guardWire.host}:8090")
+            authBaseUrl = (prefs[KEY_AUTH_URL] ?: "https://${selfMadeGuard.host}:8090")
                 .replaceFirst("http://", "https://"),
         )
     }
@@ -79,7 +79,7 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         dataStore.edit { it[KEY_MODE] = mode.name }
     }
 
-    override suspend fun saveGuardWire(config: VpnServerConfig): Unit = withContext(Dispatchers.IO) {
+    override suspend fun saveSelfMadeGuard(config: VpnServerConfig): Unit = withContext(Dispatchers.IO) {
         dataStore.edit {
             it[KEY_HOST] = config.host
             it[KEY_PORT] = config.port
@@ -123,8 +123,8 @@ class VpnSettingsRepository @Inject constructor(@ApplicationContext context: Con
         }
     }
 
-    private fun legacyGuardWire(): VpnServerConfig? {
-        val prefs = appContext.getSharedPreferences("guardwire_settings", Context.MODE_PRIVATE)
+    private fun legacySelfMadeGuard(): VpnServerConfig? {
+        val prefs = appContext.getSharedPreferences("selfmadeguard_settings", Context.MODE_PRIVATE)
         if (!prefs.contains("host")) return null
         val defaults = VpnServerConfig()
         val port = prefs.getInt("port", defaults.port)
@@ -195,7 +195,7 @@ private class SecretCipher {
 
     private companion object {
         const val KEYSTORE = "AndroidKeyStore"
-        const val ALIAS = "guardwire_settings_key_v1"
+        const val ALIAS = "selfmadeguard_settings_key_v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TAG_BITS = 128
         const val IV_SIZE = 12

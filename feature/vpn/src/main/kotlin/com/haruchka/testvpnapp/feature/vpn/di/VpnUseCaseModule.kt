@@ -10,7 +10,7 @@ import com.haruchka.testvpnapp.core.domain.usecase.LoadVpnSettingsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LoginUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.LogoutUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.ProvisionWireGuardUseCase
-import com.haruchka.testvpnapp.core.domain.usecase.ValidateGuardWireConfigUseCase
+import com.haruchka.testvpnapp.core.domain.usecase.ValidateSelfMadeGuardConfigUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnConnectionUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnLogsUseCase
 import com.haruchka.testvpnapp.core.domain.usecase.VpnSettingsUseCase
@@ -61,8 +61,8 @@ object VpnUseCaseModule {
     ): VpnConnectionUseCase = VpnConnectionUseCase(session)
 
     @Provides
-    fun provideValidateGuardWireConfigUseCase(): ValidateGuardWireConfigUseCase =
-        ValidateGuardWireConfigUseCase()
+    fun provideValidateSelfMadeGuardConfigUseCase(): ValidateSelfMadeGuardConfigUseCase =
+        ValidateSelfMadeGuardConfigUseCase()
 
     @Provides
     fun provideProvisionWireGuardUseCase(

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_title">GuardWire</string>
+    <string name="app_title">SelfMadeGuard</string>
     <string name="header_subtitle">VPN на VpnService и WireGuard · %1$s</string>
     <string name="logs">Логи</string>
     <string name="logout">Выйти</string>
@@ -37,7 +37,7 @@
     <string name="wg_get">Получить профиль</string>
     <string name="wg_ipv6_note">IPv6 отключён: конфиг с IPv6-адресами, DNS, AllowedIPs или endpoint будет отклонён.</string>
 
-    <string name="guardwire_server_title">Сервер GuardWire</string>
+    <string name="selfmadeguard_server_title">Сервер SelfMadeGuard</string>
     <string name="host_label">Host или IP</string>
     <string name="host_placeholder">10.0.2.2</string>
     <string name="port_label">Порт</string>
@@ -48,7 +48,7 @@
     <string name="show">Показать</string>
     <string name="hide">Скрыть</string>
     <string name="psk_hint_logged_in">PSK выдаётся сервером после входа и хранится зашифрованным в Android Keystore. Показать его нельзя.</string>
-    <string name="psk_hint_logged_out">Сессионный токен используется как PSK в GuardWire handshake; в самом handshake он не передаётся. Хост 10.0.2.2 из эмулятора указывает на компьютер с GuardWire-сервером.</string>
+    <string name="psk_hint_logged_out">Сессионный токен используется как PSK в SelfMadeGuard handshake; в самом handshake он не передаётся. Хост 10.0.2.2 из эмулятора указывает на компьютер с SelfMadeGuard-сервером.</string>
 
     <string name="stats_title">Статистика</string>
     <string name="received">Получено</string>
@@ -70,17 +70,17 @@
     <string name="logs_empty">Событий пока нет</string>
 
     <string name="always_on_title">Always-on VPN</string>
-    <string name="always_on_body">Android может поднимать GuardWire автоматически после перезагрузки и при смене сети. Включите always-on в системных настройках VPN и выберите GuardWire (упрощённый режим).</string>
+    <string name="always_on_body">Android может поднимать SelfMadeGuard автоматически после перезагрузки и при смене сети. Включите always-on в системных настройках VPN и выберите SelfMadeGuard (упрощённый режим).</string>
     <string name="open_vpn_settings">Открыть настройки VPN</string>
 
     <string name="about_title">Как это работает</string>
-    <string name="about_guardwire_service">GuardWireVpnService наследует VpnService, создаёт TUN через VpnService.Builder и показывает foreground-уведомление.</string>
-    <string name="about_guardwire_data">IP-пакеты из TUN упаковываются в кадры GuardWire и уходят по TCP. Кадры шифруются AES-256-GCM, ключ выводится из эфемерного ECDH P-256. Ответы сервера пишутся обратно в TUN.</string>
+    <string name="about_selfmadeguard_service">SelfMadeGuardVpnService наследует VpnService, создаёт TUN через VpnService.Builder и показывает foreground-уведомление.</string>
+    <string name="about_selfmadeguard_data">IP-пакеты из TUN упаковываются в кадры SelfMadeGuard и уходят по TCP. Кадры шифруются AES-256-GCM, ключ выводится из эфемерного ECDH P-256. Ответы сервера пишутся обратно в TUN.</string>
     <string name="about_wireguard">Реальный режим использует официальную библиотеку WireGuard: UDP-транспорт, Noise_IK и ChaCha20-Poly1305.</string>
     <string name="about_wireguard_storage">Конфиг WireGuard хранится зашифрованным в DataStore. Приватный ключ не показывается после сохранения.</string>
-    <string name="about_nat">NAT выполняет сервер: guardwire-linux-server.py или WireGuard-сервер. Клиент только маршрутизирует пакеты в TUN и не делает tun2socks.</string>
+    <string name="about_nat">NAT выполняет сервер: selfmadeguard-linux-server.py или WireGuard-сервер. Клиент только маршрутизирует пакеты в TUN и не делает tun2socks.</string>
 
-    <string name="footer">GuardWire/2 · WireGuard · учебный проект</string>
+    <string name="footer">SelfMadeGuard/2 · WireGuard · учебный проект</string>
 
     <string name="login_title">Вход в аккаунт</string>
     <string name="auth_server">Auth-сервер</string>
@@ -92,7 +92,7 @@
 
     <string name="startup_checking">Проверка сессии и профиля…</string>
 
-    <string name="validation_host_empty">Укажите адрес GuardWire-сервера</string>
+    <string name="validation_host_empty">Укажите адрес SelfMadeGuard-сервера</string>
     <string name="validation_port_invalid">Порт должен быть числом от 1 до 65535</string>
     <string name="validation_psk_empty">Укажите PSK-токен: он нужен для шифрования</string>
     <string name="login_validation_fields">Заполните auth-сервер, логин и пароль</string>
@@ -104,10 +104,10 @@
     <string name="vm_session_refresh_failed">Не удалось продлить сессию: %1$s</string>
     <string name="vm_ready">Готов к подключению</string>
     <string name="vm_login_required">Сначала войдите в аккаунт</string>
-    <string name="vm_guardwire_settings_save_failed">Не удалось сохранить настройки GuardWire</string>
-    <string name="vm_guardwire_settings_invalid">Некорректные настройки GuardWire</string>
+    <string name="vm_selfmadeguard_settings_save_failed">Не удалось сохранить настройки SelfMadeGuard</string>
+    <string name="vm_selfmadeguard_settings_invalid">Некорректные настройки SelfMadeGuard</string>
     <string name="vm_mode_save_failed">Не удалось сохранить режим</string>
-    <string name="vm_mode_simplified_log">Выбран упрощённый режим GuardWire/2</string>
+    <string name="vm_mode_simplified_log">Выбран упрощённый режим SelfMadeGuard/2</string>
     <string name="vm_mode_real_log">Выбран реальный режим WireGuard</string>
     <string name="vm_login_success">Вход выполнен: %1$s</string>
     <string name="vm_login_failed">Не удалось войти</string>

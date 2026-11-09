@@ -4,9 +4,9 @@ set -euo pipefail
 # One-command demo:
 #   ./tools/demo-up.sh [LAN_IP]
 #
-# Поднимает HTTPS auth-сервер и GuardWire demo-сервер без root.
+# Поднимает HTTPS auth-сервер и SelfMadeGuard demo-сервер без root.
 # Demo-сервер проверяет handshake/кадры, но не маршрутизирует интернет.
-# Для реального NAT используйте guardwire-linux-server.py (см. README).
+# Для реального NAT используйте selfmadeguard-linux-server.py (см. README).
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -31,9 +31,9 @@ fi
 
 AUTH_PORT="${AUTH_PORT:-8090}"
 DEMO_PORT="${DEMO_PORT:-8444}"
-TOKEN_FILE="$ROOT/tools/.guardwire-demo-token"
-SESSION_FILE="$ROOT/tools/.guardwire-demo-sessions.json"
-CERT_DIR="$ROOT/tools/.guardwire-certs"
+TOKEN_FILE="$ROOT/tools/.selfmadeguard-demo-token"
+SESSION_FILE="$ROOT/tools/.selfmadeguard-demo-sessions.json"
+CERT_DIR="$ROOT/tools/.selfmadeguard-certs"
 
 if [[ -e "$TOKEN_FILE" && ! -w "$TOKEN_FILE" ]]; then
     echo "Нет прав на запись $TOKEN_FILE."
@@ -60,8 +60,8 @@ if command -v ss >/dev/null 2>&1; then
     fi
 fi
 
-AUTH_LOG="$ROOT/tools/.guardwire-auth.log"
-DEMO_LOG="$ROOT/tools/.guardwire-demo.log"
+AUTH_LOG="$ROOT/tools/.selfmadeguard-auth.log"
+DEMO_LOG="$ROOT/tools/.selfmadeguard-demo.log"
 : > "$AUTH_LOG"
 : > "$DEMO_LOG"
 
@@ -75,7 +75,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-"$PYTHON" tools/guardwire-auth-server.py \
+"$PYTHON" tools/selfmadeguard-auth-server.py \
     --host 0.0.0.0 --port "$AUTH_PORT" \
     --user demo:demo \
     --disable-wireguard \
@@ -86,7 +86,7 @@ trap cleanup EXIT INT TERM
     >"$AUTH_LOG" 2>&1 &
 AUTH_PID=$!
 
-"$PYTHON" tools/guardwire-demo-server.py \
+"$PYTHON" tools/selfmadeguard-demo-server.py \
     --host 0.0.0.0 --port "$DEMO_PORT" \
     --auth-token-file "$TOKEN_FILE" \
     >"$DEMO_LOG" 2>&1 &
@@ -106,16 +106,16 @@ for _ in $(seq 1 40); do
 done
 
 echo
-echo "GuardWire demo запущен."
+echo "SelfMadeGuard demo запущен."
 echo "  Auth (HTTPS):  https://$LAN_IP:$AUTH_PORT"
-echo "  GuardWire:     $LAN_IP:$DEMO_PORT"
+echo "  SelfMadeGuard:     $LAN_IP:$DEMO_PORT"
 echo "  Логин:         demo / demo"
 echo
 echo "В приложении укажите auth-сервер https://$LAN_IP:$AUTH_PORT,"
-echo "а в GuardWire-режиме — host $LAN_IP и порт $DEMO_PORT."
+echo "а в SelfMadeGuard-режиме — host $LAN_IP и порт $DEMO_PORT."
 echo "Demo-сервер не маршрутизирует интернет: проверяются handshake, кадры и UI."
 echo
-echo "Логи: tools/.guardwire-auth.log, tools/.guardwire-demo.log"
+echo "Логи: tools/.selfmadeguard-auth.log, tools/.selfmadeguard-demo.log"
 echo "Остановка: Ctrl+C"
 echo
 

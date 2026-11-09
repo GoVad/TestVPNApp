@@ -1,5 +1,5 @@
 # ============================================================
-#  GuardWire VPN — .gitignore
+#  SelfMadeGuard VPN — .gitignore
 #  Игнорируем всё, что генерируется инструментами и не является
 #  исходным кодом. В репозитории должны оставаться только:
 #  исходники, ресурсы, gradle-скрипты и gradle wrapper.
@@ -37,6 +37,8 @@ local.properties
 
 # ---------- Python (demo-сервер) ----------
 __pycache__/
+tools/.selfmadeguard-*
+# старые локальные файлы прежнего имени движка
 tools/.guardwire-*
 *.py[cod]
 .venv/

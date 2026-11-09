@@ -31,10 +31,10 @@ class AuthHttpException(
 ) : AuthException(message)
 
 /**
- * Клиент auth-сервера GuardWire.
+ * Клиент auth-сервера SelfMadeGuard.
  *
  * Логин возвращает короткий access-токен и длинный refresh-токен. Access
- * используется как PSK для GuardWire, refresh — только для продления сессии.
+ * используется как PSK для SelfMadeGuard, refresh — только для продления сессии.
  * Пароль не сохраняется. Для WireGuard сервер дополнительно присылает поля,
  * из которых собирается конфиг с приватным ключом, сгенерированным на устройстве.
  */
@@ -58,7 +58,7 @@ class AuthRepository @Inject constructor(
         }
         val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
             load(null)
-            setCertificateEntry("guardwire-auth-ca", ca)
+            setCertificateEntry("selfmadeguard-auth-ca", ca)
         }
         val trustManagerFactory = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm(),

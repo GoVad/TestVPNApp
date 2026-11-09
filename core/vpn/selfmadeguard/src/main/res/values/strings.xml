@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selfmadeguard_channel_name">SelfMadeGuard VPN</string>
+    <string name="selfmadeguard_channel_description">Persistent notification for the active VPN tunnel</string>
+    <string name="selfmadeguard_notification_title">SelfMadeGuard</string>
+    <string name="selfmadeguard_notification_preparing">Preparing tunnel…</string>
+    <string name="selfmadeguard_notification_connecting">Connecting to %1$s…</string>
+    <string name="selfmadeguard_notification_connected">Tunnel active: %1$s</string>
+    <string name="selfmadeguard_notification_disconnect">Disconnect</string>
+    <string name="log_selfmadeguard_connecting">SelfMadeGuard: connecting to %1$s…</string>
+    <string name="log_selfmadeguard_tunnel_established">SelfMadeGuard: tunnel established</string>
+    <string name="log_selfmadeguard_tunnel_disconnected">SelfMadeGuard: tunnel disconnected</string>
+    <string name="log_selfmadeguard_reconnecting">SelfMadeGuard: reconnecting in %1$d s — %2$s</string>
+    <string name="log_selfmadeguard_network_unavailable">Network unavailable</string>
+    <string name="log_selfmadeguard_network_restored">Network restored</string>
+    <string name="log_selfmadeguard_network_monitor_failed">SelfMadeGuard: failed to monitor network</string>
+    <string name="error_selfmadeguard_invalid_settings">Invalid SelfMadeGuard server settings</string>
+    <string name="error_selfmadeguard_revoked">VPN connection was revoked by the system</string>
+    <string name="error_selfmadeguard_settings_load_failed">Failed to load VPN settings</string>
+    <string name="error_selfmadeguard_always_on_mode">Always-on is supported only in simplified mode</string>
+    <string name="error_selfmadeguard_session_expired">Session expired, please sign in again</string>
+    <string name="error_selfmadeguard_no_profile">No saved SelfMadeGuard profile</string>
+    <string name="error_selfmadeguard_connect_failed">Failed to connect</string>
+    <string name="error_selfmadeguard_reconnect_failed">Failed to restore connection: %1$s</string>
+    <string name="error_selfmadeguard_establish_null">VpnService.establish() returned null</string>
+    <string name="error_selfmadeguard_server_closed">Server closed the tunnel</string>
+    <string name="log_selfmadeguard_keepalive_error">Keep-alive error</string>
+    <string name="log_selfmadeguard_stats_error">Traffic stats error</string>
+    <string name="log_selfmadeguard_pump_stopped">%1$s stopped</string>
+    <string name="log_selfmadeguard_pump_failed">%1$s failed</string>
+</resources>

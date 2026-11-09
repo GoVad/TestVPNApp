@@ -5,7 +5,7 @@ sealed interface VpnConnectionState {
     /** Туннель не создан, трафик идёт напрямую. */
     data object Disconnected : VpnConnectionState
 
-    /** Идёт TCP-подключение и рукопожатие GuardWire. */
+    /** Идёт TCP-подключение и рукопожатие SelfMadeGuard. */
     data object Connecting : VpnConnectionState
 
     /** TUN-интерфейс создан, сервер подтвердил рукопожатие. */

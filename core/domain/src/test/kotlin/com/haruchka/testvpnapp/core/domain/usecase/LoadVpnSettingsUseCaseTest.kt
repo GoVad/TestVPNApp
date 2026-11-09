@@ -43,7 +43,7 @@ class LoadVpnSettingsUseCaseTest {
         settings = FakeSettingsStore(
             VpnStoredSettings(
                 mode = VpnMode.REAL,
-                guardWire = VpnServerConfig(host = "vpn.example", port = 8443, token = "psk"),
+                selfMadeGuard = VpnServerConfig(host = "vpn.example", port = 8443, token = "psk"),
                 wireGuardConfig = "config",
                 authToken = token,
                 authUsername = "demo",
@@ -61,7 +61,7 @@ class LoadVpnSettingsUseCaseTest {
 
         override suspend fun saveMode(mode: VpnMode) = Unit
 
-        override suspend fun saveGuardWire(config: VpnServerConfig) = Unit
+        override suspend fun saveSelfMadeGuard(config: VpnServerConfig) = Unit
 
         override suspend fun saveWireGuardConfig(config: String) = Unit
 

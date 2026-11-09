@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_title">GuardWire</string>
+    <string name="app_title">SelfMadeGuard</string>
     <string name="header_subtitle">VPN on VpnService and WireGuard · %1$s</string>
     <string name="logs">Logs</string>
     <string name="logout">Sign out</string>
@@ -37,7 +37,7 @@
     <string name="wg_get">Get profile</string>
     <string name="wg_ipv6_note">IPv6 is disabled: configs with IPv6 addresses, DNS, AllowedIPs or endpoint will be rejected.</string>
 
-    <string name="guardwire_server_title">GuardWire server</string>
+    <string name="selfmadeguard_server_title">SelfMadeGuard server</string>
     <string name="host_label">Host or IP</string>
     <string name="host_placeholder">10.0.2.2</string>
     <string name="port_label">Port</string>
@@ -48,7 +48,7 @@
     <string name="show">Show</string>
     <string name="hide">Hide</string>
     <string name="psk_hint_logged_in">The PSK is issued by the server after sign-in and stored encrypted in Android Keystore. It cannot be revealed.</string>
-    <string name="psk_hint_logged_out">The session token is used as the GuardWire handshake PSK; it is not sent inside the handshake. The 10.0.2.2 host from the emulator points to the computer running the GuardWire server.</string>
+    <string name="psk_hint_logged_out">The session token is used as the SelfMadeGuard handshake PSK; it is not sent inside the handshake. The 10.0.2.2 host from the emulator points to the computer running the SelfMadeGuard server.</string>
 
     <string name="stats_title">Statistics</string>
     <string name="received">Received</string>
@@ -68,17 +68,17 @@
     <string name="logs_empty">No events yet</string>
 
     <string name="always_on_title">Always-on VPN</string>
-    <string name="always_on_body">Android can bring GuardWire up automatically after reboot and when the network changes. Enable always-on in system VPN settings and select GuardWire (simplified mode).</string>
+    <string name="always_on_body">Android can bring SelfMadeGuard up automatically after reboot and when the network changes. Enable always-on in system VPN settings and select SelfMadeGuard (simplified mode).</string>
     <string name="open_vpn_settings">Open VPN settings</string>
 
     <string name="about_title">How it works</string>
-    <string name="about_guardwire_service">GuardWireVpnService extends VpnService, creates a TUN via VpnService.Builder and shows a foreground notification.</string>
-    <string name="about_guardwire_data">IP packets from TUN are wrapped into GuardWire frames and sent over TCP. Frames are encrypted with AES-256-GCM; the key is derived from ephemeral ECDH P-256. Server responses are written back to TUN.</string>
+    <string name="about_selfmadeguard_service">SelfMadeGuardVpnService extends VpnService, creates a TUN via VpnService.Builder and shows a foreground notification.</string>
+    <string name="about_selfmadeguard_data">IP packets from TUN are wrapped into SelfMadeGuard frames and sent over TCP. Frames are encrypted with AES-256-GCM; the key is derived from ephemeral ECDH P-256. Server responses are written back to TUN.</string>
     <string name="about_wireguard">Real mode uses the official WireGuard library: UDP transport, Noise_IK and ChaCha20-Poly1305.</string>
     <string name="about_wireguard_storage">The WireGuard config is stored encrypted in DataStore. The private key is not shown after saving.</string>
-    <string name="about_nat">NAT is performed by the server: guardwire-linux-server.py or a WireGuard server. The client only routes packets into TUN and does not do tun2socks.</string>
+    <string name="about_nat">NAT is performed by the server: selfmadeguard-linux-server.py or a WireGuard server. The client only routes packets into TUN and does not do tun2socks.</string>
 
-    <string name="footer">GuardWire/2 · WireGuard · educational project</string>
+    <string name="footer">SelfMadeGuard/2 · WireGuard · educational project</string>
 
     <string name="login_title">Sign in</string>
     <string name="auth_server">Auth server</string>
@@ -90,7 +90,7 @@
 
     <string name="startup_checking">Checking session and profile…</string>
 
-    <string name="validation_host_empty">Enter GuardWire server address</string>
+    <string name="validation_host_empty">Enter SelfMadeGuard server address</string>
     <string name="validation_port_invalid">Port must be a number from 1 to 65535</string>
     <string name="validation_psk_empty">Enter a PSK token: it is required for encryption</string>
     <string name="login_validation_fields">Fill in the auth server, username and password</string>
@@ -102,10 +102,10 @@
     <string name="vm_session_refresh_failed">Failed to refresh session: %1$s</string>
     <string name="vm_ready">Ready to connect</string>
     <string name="vm_login_required">Sign in first</string>
-    <string name="vm_guardwire_settings_save_failed">Failed to save GuardWire settings</string>
-    <string name="vm_guardwire_settings_invalid">Invalid GuardWire settings</string>
+    <string name="vm_selfmadeguard_settings_save_failed">Failed to save SelfMadeGuard settings</string>
+    <string name="vm_selfmadeguard_settings_invalid">Invalid SelfMadeGuard settings</string>
     <string name="vm_mode_save_failed">Failed to save mode</string>
-    <string name="vm_mode_simplified_log">Simplified GuardWire/2 mode selected</string>
+    <string name="vm_mode_simplified_log">Simplified SelfMadeGuard/2 mode selected</string>
     <string name="vm_mode_real_log">Real WireGuard mode selected</string>
     <string name="vm_login_success">Signed in: %1$s</string>
     <string name="vm_login_failed">Failed to sign in</string>

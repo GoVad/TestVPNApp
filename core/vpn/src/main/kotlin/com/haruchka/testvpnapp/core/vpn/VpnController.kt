@@ -9,7 +9,7 @@ import com.haruchka.testvpnapp.core.domain.VpnSession
 import com.haruchka.testvpnapp.core.domain.VpnStateRepository
 import com.haruchka.testvpnapp.core.domain.WireGuardEngine
 import com.haruchka.testvpnapp.core.model.VpnMode
-import com.haruchka.testvpnapp.core.vpn.guardwire.GuardWireVpnService
+import com.haruchka.testvpnapp.core.vpn.selfmadeguard.SelfMadeGuardVpnService
 import com.haruchka.testvpnapp.core.model.VpnRuntimeState
 import com.haruchka.testvpnapp.core.model.VpnServerConfig
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Фасад над обоими VPN-движками для UI-слоя.
  *
- * GuardWire запускается как foreground-сервис, WireGuard делегируется
+ * SelfMadeGuard запускается как foreground-сервис, WireGuard делегируется
  * [WireGuardEngine]. Сама логика туннелей живёт в отдельных модулях.
  */
 @Singleton
@@ -37,7 +37,7 @@ class VpnController @Inject constructor(
         runCatching {
             ContextCompat.startForegroundService(
                 appContext,
-                GuardWireVpnService.connectIntent(appContext, config),
+                SelfMadeGuardVpnService.connectIntent(appContext, config),
             )
         }.onFailure { error ->
             stateStore.markFailed(
@@ -63,7 +63,7 @@ class VpnController @Inject constructor(
 
         stateStore.markDisconnecting()
         runCatching {
-            appContext.startService(GuardWireVpnService.disconnectIntent(appContext))
+            appContext.startService(SelfMadeGuardVpnService.disconnectIntent(appContext))
         }.onFailure { error ->
             stateStore.markFailed(
                 appContext.getString(

@@ -101,7 +101,7 @@ if [[ "$SUDO_USER_NAME" == "root" ]]; then
 else
     CLIENT_HOME="$(getent passwd "$SUDO_USER_NAME" | cut -d: -f6)"
 fi
-CLIENT_DIR="${CLIENT_HOME}/guardwire-wireguard"
+CLIENT_DIR="${CLIENT_HOME}/selfmadeguard-wireguard"
 CLIENT_CONF="${CLIENT_DIR}/${CLIENT_NAME}.conf"
 
 mkdir -p "$CLIENT_DIR"

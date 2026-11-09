@@ -80,7 +80,7 @@ class ProvisionWireGuardUseCaseTest {
 
         override suspend fun saveMode(mode: VpnMode) = Unit
 
-        override suspend fun saveGuardWire(config: VpnServerConfig) = Unit
+        override suspend fun saveSelfMadeGuard(config: VpnServerConfig) = Unit
 
         override suspend fun saveWireGuardConfig(config: String) {
             savedConfig = config

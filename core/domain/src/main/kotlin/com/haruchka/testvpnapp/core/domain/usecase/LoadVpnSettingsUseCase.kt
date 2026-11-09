@@ -9,7 +9,7 @@ import com.haruchka.testvpnapp.core.model.VpnServerConfig
 /** Настройки и сессия, восстановленные при старте приложения. */
 data class LoadedVpnSettings(
     val mode: VpnMode,
-    val guardWire: VpnServerConfig,
+    val selfMadeGuard: VpnServerConfig,
     val wireGuardConfig: String?,
     val wireGuardProfile: WireGuardProfile?,
     val authToken: String?,
@@ -40,7 +40,7 @@ class LoadVpnSettingsUseCase(
 
         LoadedVpnSettings(
             mode = stored.mode,
-            guardWire = stored.guardWire,
+            selfMadeGuard = stored.selfMadeGuard,
             wireGuardConfig = stored.wireGuardConfig,
             wireGuardProfile = profile,
             authToken = stored.authToken,
