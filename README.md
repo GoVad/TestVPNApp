@@ -176,5 +176,6 @@ APK, запускает domain/SelfMadeGuard-protocol-тесты и lint на pu
 - [WireGuardController.kt](core/vpn/wireguard/src/main/kotlin/com/haruchka/testvpnapp/core/vpn/wireguard/WireGuardController.kt) — реальный режим.
 - [AuthRepository.kt](core/data/src/main/kotlin/com/haruchka/testvpnapp/core/data/AuthRepository.kt) — HTTPS auth-клиент.
 - [VpnViewModel.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnViewModel.kt) — Orbit + use case-и.
+- [VpnAction.kt](feature/vpn/src/main/kotlin/com/haruchka/testvpnapp/feature/vpn/VpnAction.kt) — единый контракт событий UI → ViewModel.
 - [core/selfmadeguard-protocol](core/selfmadeguard-protocol/src/main/kotlin/com/haruchka/testvpnapp/core/selfmadeguard/protocol) — SelfMadeGuard/2.
 - [tools](tools) — demo, auth, Linux NAT и WireGuard setup.

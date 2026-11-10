@@ -38,8 +38,8 @@ import org.orbitmvi.orbit.syntax.Syntax
 import org.orbitmvi.orbit.viewmodel.orbitContainer
 
 /**
- * MVVM + Orbit: UI отправляет интенты, ViewModel вызывает use case-и,
- * меняет состояние через `reduce` и отдаёт события через `postSideEffect`.
+ * MVVM + Orbit: UI отправляет [VpnAction] через [onAction], ViewModel вызывает
+ * use case-и, меняет состояние через `reduce` и отдаёт события через `postSideEffect`.
  */
 @HiltViewModel
 class VpnViewModel @Inject constructor(
@@ -141,11 +141,42 @@ class VpnViewModel @Inject constructor(
             }
         }
 
-    fun onConnectClicked() = intent {
-        if (state.isActive || state.isLoading) return@intent
+    /**
+     * Единая точка входа для событий UI: экран вызывает только этот метод.
+     */
+    fun onAction(action: VpnAction) = intent {
+        when (action) {
+            VpnAction.Connect -> handleConnect()
+            is VpnAction.Login -> handleLogin(action.baseUrl, action.username, action.password)
+            VpnAction.AuthInputChanged ->
+                if (state.authError != null) reduce { state.copy(authError = null) }
+            VpnAction.Logout -> handleLogout()
+            VpnAction.Disconnect ->
+                if (state.isActive) connection.disconnect()
+            is VpnAction.NotificationPermissionResult ->
+                handleNotificationPermissionResult(action.granted)
+            is VpnAction.VpnConsentResult -> handleVpnConsentResult(action.granted)
+            is VpnAction.ModeChanged -> handleModeChanged(action.mode)
+            VpnAction.WireGuardConfigRequested -> handleWireGuardConfigRequested()
+            VpnAction.WireGuardConfigCleared -> handleWireGuardConfigCleared()
+            is VpnAction.HostChanged ->
+                reduce { state.copy(host = action.value, inputError = null) }
+            is VpnAction.PortChanged ->
+                reduce {
+                    state.copy(port = action.value.filter(Char::isDigit).take(5), inputError = null)
+                }
+            is VpnAction.TokenChanged ->
+                reduce { state.copy(token = action.value, inputError = null) }
+            VpnAction.LogsCleared -> logs.clear()
+            VpnAction.OpenVpnSettings -> postSideEffect(VpnSideEffect.OpenVpnSettings)
+        }
+    }
+
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleConnect() {
+        if (state.isActive || state.isLoading) return
         if (!state.isLoggedIn) {
             postSideEffect(VpnSideEffect.ShowMessage(appContext.getString(R.string.vm_login_required)))
-            return@intent
+            return
         }
 
         val authResult = ensureAuthSession()
@@ -162,7 +193,7 @@ class VpnViewModel @Inject constructor(
                 logs.append(message)
                 postSideEffect(VpnSideEffect.ShowMessage(message))
             }
-            return@intent
+            return
         }
         if (auth.accessToken != state.token) {
             reduce { state.copy(token = auth.accessToken) }
@@ -194,7 +225,7 @@ class VpnViewModel @Inject constructor(
                     }
                     reduce { state.copy(inputError = message) }
                     postSideEffect(VpnSideEffect.ShowMessage(message))
-                    return@intent
+                    return
                 }
 
                 settings.saveSelfMadeGuard(config)
@@ -211,7 +242,7 @@ class VpnViewModel @Inject constructor(
             }
 
             VpnMode.REAL -> {
-                val config = wireGuardConfig ?: provisionWireGuardProfile() ?: return@intent
+                val config = wireGuardConfig ?: provisionWireGuardProfile() ?: return
                 pending = PendingConnection.WireGuard(config)
                 reduce { state.copy(inputError = null) }
             }
@@ -224,7 +255,11 @@ class VpnViewModel @Inject constructor(
         }
     }
 
-    fun onLogin(baseUrl: String, username: String, password: String) = intent {
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleLogin(
+        baseUrl: String,
+        username: String,
+        password: String,
+    ) {
         reduce { state.copy(isLoggingIn = true, authError = null) }
 
         login(baseUrl, username, password)
@@ -260,13 +295,7 @@ class VpnViewModel @Inject constructor(
             }
     }
 
-    fun onAuthInputChanged() = intent {
-        if (state.authError != null) {
-            reduce { state.copy(authError = null) }
-        }
-    }
-
-    fun onLogout() = intent {
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleLogout() {
         logout(disconnect = state.isActive)
             .onFailure { logs.append(appContext.getString(R.string.vm_logout_failed, it.message ?: "?")) }
         wireGuardConfig = null
@@ -284,31 +313,28 @@ class VpnViewModel @Inject constructor(
         logs.append(appContext.getString(R.string.vm_logout_log))
     }
 
-    fun onDisconnectClicked() = intent {
-        if (!state.isActive) return@intent
-        connection.disconnect()
-    }
-
-    fun onNotificationPermissionResult(granted: Boolean) = intent {
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleNotificationPermissionResult(
+        granted: Boolean,
+    ) {
         if (!granted) {
             logs.append(appContext.getString(R.string.vm_notifications_disabled))
         }
         requestVpnConsent()
     }
 
-    fun onVpnConsentResult(granted: Boolean) = intent {
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleVpnConsentResult(granted: Boolean) {
         if (!granted) {
             pending = null
             val message = appContext.getString(R.string.vm_vpn_permission_required)
             reduce { state.copy(inputError = message) }
             postSideEffect(VpnSideEffect.ShowMessage(message))
-            return@intent
+            return
         }
         startTunnel()
     }
 
-    fun onModeChanged(mode: VpnMode) = intent {
-        if (state.isActive || state.isLoading || state.mode == mode) return@intent
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleModeChanged(mode: VpnMode) {
+        if (state.isActive || state.isLoading || state.mode == mode) return
         reduce { state.copy(mode = mode, inputError = null) }
         settings.saveMode(mode)
             .onFailure { logs.append(appContext.getString(R.string.vm_mode_save_failed)) }
@@ -320,13 +346,13 @@ class VpnViewModel @Inject constructor(
         )
     }
 
-    fun onWireGuardConfigRequested() = intent {
-        if (state.isActive || state.isProvisioningWireGuard) return@intent
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleWireGuardConfigRequested() {
+        if (state.isActive || state.isProvisioningWireGuard) return
         provisionWireGuardProfile()
     }
 
-    fun onWireGuardConfigCleared() = intent {
-        if (state.isActive) return@intent
+    private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleWireGuardConfigCleared() {
+        if (state.isActive) return
         wireGuardConfig = null
         settings.clearWireGuard()
             .onFailure { logs.append(appContext.getString(R.string.vm_wg_config_delete_failed)) }
@@ -339,27 +365,6 @@ class VpnViewModel @Inject constructor(
             )
         }
         logs.append(appContext.getString(R.string.vm_wg_config_removed))
-    }
-
-    fun onHostChanged(value: String) = intent {
-        reduce { state.copy(host = value, inputError = null) }
-    }
-
-    fun onPortChanged(value: String) = intent {
-        val filtered = value.filter(Char::isDigit).take(5)
-        reduce { state.copy(port = filtered, inputError = null) }
-    }
-
-    fun onTokenChanged(value: String) = intent {
-        reduce { state.copy(token = value, inputError = null) }
-    }
-
-    fun onLogsCleared() = intent {
-        logs.clear()
-    }
-
-    fun onOpenVpnSettings() = intent {
-        postSideEffect(VpnSideEffect.OpenVpnSettings)
     }
 
     private suspend fun Syntax<VpnUiState, VpnSideEffect>.handleExpiredSession(message: String) {

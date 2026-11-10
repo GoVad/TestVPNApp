@@ -48,13 +48,13 @@ fun VpnRoute(
     val consentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        viewModel.onVpnConsentResult(result.resultCode == Activity.RESULT_OK)
+        viewModel.onAction(VpnAction.VpnConsentResult(result.resultCode == Activity.RESULT_OK))
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        viewModel.onNotificationPermissionResult(granted)
+        viewModel.onAction(VpnAction.NotificationPermissionResult(granted))
     }
 
     viewModel.collectSideEffect { effect ->
@@ -112,9 +112,9 @@ fun VpnRoute(
                     initialBaseUrl = state.authBaseUrl,
                     isLoading = state.isLoggingIn,
                     error = state.authError,
-                    onInputChanged = { viewModel.onAuthInputChanged() },
+                    onInputChanged = { viewModel.onAction(VpnAction.AuthInputChanged) },
                     onLogin = { baseUrl, username, password ->
-                        viewModel.onLogin(baseUrl, username, password)
+                        viewModel.onAction(VpnAction.Login(baseUrl, username, password))
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -122,24 +122,28 @@ fun VpnRoute(
                 VpnDestination.Logs -> VpnLogsScreen(
                     logs = state.logs,
                     onClose = { showLogs = false },
-                    onClear = { viewModel.onLogsCleared() },
+                    onClear = { viewModel.onAction(VpnAction.LogsCleared) },
                     modifier = Modifier.fillMaxSize(),
                 )
 
                 VpnDestination.Main -> VpnScreen(
                     state = state,
-                    onConnect = { viewModel.onConnectClicked() },
-                    onDisconnect = { viewModel.onDisconnectClicked() },
-                    onModeChange = { viewModel.onModeChanged(it) },
+                    onConnect = { viewModel.onAction(VpnAction.Connect) },
+                    onDisconnect = { viewModel.onAction(VpnAction.Disconnect) },
+                    onModeChange = { viewModel.onAction(VpnAction.ModeChanged(it)) },
                     onShowLogs = { showLogs = true },
-                    onLogout = { viewModel.onLogout() },
+                    onLogout = { viewModel.onAction(VpnAction.Logout) },
                     username = state.username,
-                    onWireGuardConfigRequested = { viewModel.onWireGuardConfigRequested() },
-                    onWireGuardConfigCleared = { viewModel.onWireGuardConfigCleared() },
-                    onHostChange = { viewModel.onHostChanged(it) },
-                    onPortChange = { viewModel.onPortChanged(it) },
-                    onTokenChange = { viewModel.onTokenChanged(it) },
-                    onOpenVpnSettings = { viewModel.onOpenVpnSettings() },
+                    onWireGuardConfigRequested = {
+                        viewModel.onAction(VpnAction.WireGuardConfigRequested)
+                    },
+                    onWireGuardConfigCleared = {
+                        viewModel.onAction(VpnAction.WireGuardConfigCleared)
+                    },
+                    onHostChange = { viewModel.onAction(VpnAction.HostChanged(it)) },
+                    onPortChange = { viewModel.onAction(VpnAction.PortChanged(it)) },
+                    onTokenChange = { viewModel.onAction(VpnAction.TokenChanged(it)) },
+                    onOpenVpnSettings = { viewModel.onAction(VpnAction.OpenVpnSettings) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
